@@ -59,10 +59,22 @@ from .razorpay_views import (
     cancel_withdrawal,
     razorpay_webhook
 )
-from .services.withdrawal_views import (
-    withdraw_coins,
-    get_withdrawal_history as get_new_withdrawal_history,
-    get_withdrawal_status as get_new_withdrawal_status
+from .services.withdrawal_service import (
+    WithdrawalService
+)
+from .services.admin_withdrawal_service import (
+    AdminWithdrawalService
+)
+from .services.withdrawal_api_views import (
+    create_withdrawal_request,
+    get_withdrawal_history,
+    get_withdrawal_status,
+    cancel_withdrawal,
+    get_pending_withdrawals,
+    approve_withdrawal,
+    reject_withdrawal,
+    delete_withdrawal,
+    mark_as_completed
 )
 from .daily_quiz_views import (
     get_daily_quiz,
@@ -171,16 +183,23 @@ urlpatterns = [
     path('razorpay/history/', get_payment_history, name='razorpay-payment-history'),
     path('razorpay/webhook/', razorpay_webhook, name='razorpay-webhook'),
     
-    # Coin Withdrawal endpoints (NEW - UPI Payouts)
-    path('wallet/withdraw/', withdraw_coins, name='withdraw-coins'),
-    path('wallet/withdrawals/', get_new_withdrawal_history, name='new-withdrawal-history'),
-    path('wallet/withdrawal/<str:withdrawal_id>/', get_new_withdrawal_status, name='new-withdrawal-status'),
+    # Coin Withdrawal endpoints (NEW - UPI Payouts with Production Service)
+    path('api/withdrawal/create/', create_withdrawal_request, name='create-withdrawal-request'),
+    path('api/withdrawal/history/', get_withdrawal_history, name='get-withdrawal-history'),
+    path('api/withdrawal/status/<str:withdrawal_id>/', get_withdrawal_status, name='get-withdrawal-status'),
+    path('api/withdrawal/cancel/<str:withdrawal_id>/', cancel_withdrawal, name='cancel-withdrawal-request'),
+    path('api/withdrawal/pending/', get_pending_withdrawals, name='get-pending-withdrawals'),
     
-    # Coin Withdrawal endpoints (LEGACY - kept for backward compatibility)
-    path('razorpay/withdraw/', request_coin_withdrawal, name='request-coin-withdrawal'),
-    path('razorpay/withdrawals/', get_withdrawal_history, name='withdrawal-history'),
-    path('razorpay/withdrawal/<str:withdrawal_id>/', get_withdrawal_status, name='withdrawal-status'),
-    path('razorpay/withdrawal/<str:withdrawal_id>/cancel/', cancel_withdrawal, name='cancel-withdrawal'),
+    # Admin Withdrawal endpoints (NEW - Admin Management)
+    path('api/admin/withdrawal/approve/<str:withdrawal_id>/', approve_withdrawal, name='approve-withdrawal'),
+    path('api/admin/withdrawal/reject/<str:withdrawal_id>/', reject_withdrawal, name='reject-withdrawal'),
+    path('api/admin/withdrawal/delete/<str:withdrawal_id>/', delete_withdrawal, name='delete-withdrawal'),
+    path('api/admin/withdrawal/complete/<str:withdrawal_id>/', mark_as_completed, name='mark-withdrawal-completed'),
+    
+    # Legacy Coin Withdrawal endpoints (kept for backward compatibility)
+    path('wallet/withdraw/', create_withdrawal_request, name='legacy-withdraw-coins'),
+    path('wallet/withdrawals/', get_withdrawal_history, name='legacy-withdrawal-history'),
+    path('wallet/withdrawal/<str:withdrawal_id>/', get_withdrawal_status, name='legacy-withdrawal-status'),
     
     # Daily Quiz endpoints
     path('daily-quiz/', get_daily_quiz, name='daily-quiz'),
