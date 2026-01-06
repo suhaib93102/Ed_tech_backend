@@ -1,0 +1,700 @@
+"""
+Daily Quiz API Views
+"""
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from django.utils import timezone
+from django.db import transaction
+from datetime import date, timedelta
+from .models import (
+    DailyQuiz, DailyQuestion, UserDailyQuizAttempt, 
+    UserCoins, CoinTransaction, QuizSettings
+)
+from .services.gemini_service import gemini_service
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def create_or_get_daily_quiz():
+    """
+    Auto-generate today's Daily Quiz using Gemini if it doesn't exist
+    """
+    today = date.today()
+    daily_quiz = DailyQuiz.objects.filter(date=today, is_active=True).first()
+    
+    if daily_quiz:
+        return daily_quiz
+    
+    # Generate new quiz using Gemini
+    logger.info(f"Generating new Daily Quiz for {today}")
+    
+    try:
+        result = gemini_service.generate_daily_quiz(num_questions=5)
+        
+        if not result.get('success'):
+            logger.error(f"Failed to generate Daily Quiz: {result.get('error')}")
+            return None
+        
+        questions_data = result.get('questions', [])
+        
+        if not questions_data:
+            logger.error("No questions returned from Gemini")
+            return None
+        
+        # Create the quiz
+        with transaction.atomic():
+            daily_quiz = DailyQuiz.objects.create(
+                date=today,
+                title=f'Daily GK Quiz - {today.strftime("%B %d, %Y")}',
+                description='Test your general knowledge with AI-generated questions!',
+                total_questions=len(questions_data),
+                difficulty='medium'
+            )
+            
+            # Add questions
+            for idx, q_data in enumerate(questions_data, 1):
+                DailyQuestion.objects.create(
+                    daily_quiz=daily_quiz,
+                    order=idx,
+                    question_text=q_data.get('question_text', ''),
+                    options=q_data.get('options', []),
+                    correct_answer=q_data.get('correct_answer', 'A'),
+                    category=q_data.get('category', 'general'),
+                    difficulty=q_data.get('difficulty', 'medium'),
+                    explanation=q_data.get('explanation', ''),
+                    fun_fact=q_data.get('fun_fact', '')
+                )
+            
+            logger.info(f"Successfully created Daily Quiz with {len(questions_data)} questions")
+            return daily_quiz
+            
+    except Exception as e:
+        logger.error(f"Error creating Daily Quiz: {e}", exc_info=True)
+        return None
+
+
+@api_view(['GET'])
+def get_daily_quiz(request):
+    """
+    Get today's daily coin quiz (auto-generates using Gemini if not exists)
+    Returns: quiz metadata + questions (without correct answers) + coin logic + UI metadata
+    Format matches strict JSON requirements for daily_coin_quiz
+    """
+    user_id = request.query_params.get('user_id', 'anonymous')
+    today = date.today()
+    
+    try:
+        # Get quiz settings for coin rewards
+        settings = QuizSettings.get_settings()
+        
+        # Auto-generate quiz if it doesn't exist (ensure 10 questions)
+        daily_quiz = create_or_get_daily_quiz()
+        
+        if not daily_quiz:
+            return Response({
+                'error': 'Failed to generate quiz',
+                'message': 'Unable to create today\'s quiz. Please try again later.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Check if user already attempted today's quiz
+        existing_attempt = UserDailyQuizAttempt.objects.filter(
+            daily_quiz=daily_quiz,
+            user_id=user_id
+        ).first()
+        
+        if existing_attempt:
+            return Response({
+                'message': 'You have already completed today\'s quiz!',
+                'already_attempted': True,
+                'result': {
+                    'correct_count': existing_attempt.correct_count,
+                    'total_questions': existing_attempt.total_questions,
+                    'score_percentage': existing_attempt.score_percentage,
+                    'coins_earned': existing_attempt.coins_earned,
+                    'attempt_bonus': settings.daily_quiz_attempt_bonus,
+                    'per_correct': settings.daily_quiz_coins_per_correct,
+                }
+            }, status=status.HTTP_200_OK)
+        
+        # Get questions (without revealing correct answers)
+        questions = DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('order')
+        
+        questions_data = []
+        for idx, q in enumerate(questions, 1):
+            questions_data.append({
+                'id': idx,
+                'question': q.question_text,
+                'options': [opt['text'] for opt in q.options],  # Array of strings ["A", "B", "C", "D"]
+                'category': q.category,
+                'difficulty': q.difficulty,
+            })
+        # Enforce maximum of 5 questions for the Daily Quiz
+        questions_data = questions_data[:5]
+        
+        # Return format matching the strict requirements
+        return Response({
+            'quiz_metadata': {
+                'quiz_type': 'daily_coin_quiz',
+                'total_questions': len(questions_data),
+                'difficulty': 'medium',
+                'date': str(today),
+                'title': daily_quiz.title,
+                'description': daily_quiz.description,
+            },
+            'coins': {
+                'attempt_bonus': settings.daily_quiz_attempt_bonus,
+                'per_correct_answer': settings.daily_quiz_coins_per_correct,
+                'max_possible': settings.daily_quiz_attempt_bonus + (len(questions_data) * settings.daily_quiz_coins_per_correct),
+            },
+            'questions': [
+                {
+                    'id': idx + 1,
+                    'question': (q.get('question') or q.get('question_text') or q.get('question_text') if isinstance(q, dict) else q),
+                    'options': [opt.get('text') if isinstance(opt, dict) else opt for opt in q.get('options', [])],
+                    'category': q.get('category', 'general') if isinstance(q, dict) else 'general',
+                    'difficulty': q.get('difficulty', 'medium') if isinstance(q, dict) else 'medium',
+                }
+                for idx, q in enumerate(questions_data)
+            ],
+            'ui': {
+                'theme': 'light',
+                'card_style': 'rounded',
+                'accent_color': '#6366F1',
+                'show_progress_bar': True,
+                'show_coin_animation': True,
+            },
+            'quiz_id': str(daily_quiz.id),
+            'already_attempted': False,
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def start_daily_quiz(request):
+    """
+    Mark the Daily Quiz as started for a user and award participation coins (+10).
+    Body: { "user_id": "...", "quiz_id": "..." }
+    """
+    try:
+        # Get quiz settings for coin rewards
+        settings = QuizSettings.get_settings()
+        
+        user_id = request.data.get('user_id', 'anonymous')
+        quiz_id = request.data.get('quiz_id')
+
+        if not quiz_id:
+            return Response({'error': 'quiz_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        daily_quiz = DailyQuiz.objects.get(id=quiz_id, is_active=True)
+
+        # If already attempted/completed, return info
+        existing_attempt = UserDailyQuizAttempt.objects.filter(daily_quiz=daily_quiz, user_id=user_id).first()
+        if existing_attempt and existing_attempt.completed_at is not None:
+            return Response({'error': 'Quiz already completed'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # If started already (but not completed) return existing info
+        if existing_attempt and existing_attempt.completed_at is None:
+            return Response({
+                'message': 'Quiz already started',
+                'quiz_id': str(daily_quiz.id),
+                'coins_awarded': existing_attempt.coins_earned,
+            }, status=status.HTTP_200_OK)
+
+        # Create attempt and award participation coins from settings
+        attempt_bonus = settings.daily_quiz_attempt_bonus
+
+        with transaction.atomic():
+            attempt = UserDailyQuizAttempt.objects.create(
+                daily_quiz=daily_quiz,
+                user_id=user_id,
+                coins_earned=attempt_bonus,
+            )
+
+            user_coins, created = UserCoins.objects.get_or_create(
+                user_id=user_id,
+                defaults={'total_coins': 0, 'lifetime_coins': 0}
+            )
+            user_coins.add_coins(attempt_bonus, reason=f"Daily Quiz participation {daily_quiz.date}")
+
+        return Response({
+            'success': True,
+            'message': f'You earned {attempt_bonus} coins for starting the Daily Quiz.',
+            'quiz_id': str(daily_quiz.id),
+            'coins_awarded': attempt_bonus,
+        }, status=status.HTTP_200_OK)
+
+    except DailyQuiz.DoesNotExist:
+        return Response({'error': 'Quiz not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def submit_daily_quiz(request):
+    """
+    Submit answers for daily coin quiz
+    Body: {
+        "user_id": "...",
+        "quiz_id": "...",
+        "answers": {"1": 0, "2": 1, ...},  # question index -> option index
+        "time_taken_seconds": 120
+    }
+    Returns coins earned with attempt bonus + per correct answer rewards
+    """
+    try:
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Request received. Method: {request.method}, Content-Type: {request.content_type}")
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Raw body: {request.body}")
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Request data: {request.data}")
+        
+        # Get quiz settings for coin rewards
+        settings = QuizSettings.get_settings()
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Quiz settings retrieved: attempt_bonus={settings.daily_quiz_attempt_bonus}, per_correct={settings.daily_quiz_coins_per_correct}")
+        
+        user_id = request.data.get('user_id', 'anonymous')
+        quiz_id = request.data.get('quiz_id')
+        answers = request.data.get('answers', {})
+        time_taken = request.data.get('time_taken_seconds', 0)
+        
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Extracted data: user_id={user_id}, quiz_id={quiz_id}, answers={answers}, time_taken={time_taken}")
+        
+        if not quiz_id or not answers:
+            logger.warning(f"[SUBMIT_DAILY_QUIZ] Missing required fields: quiz_id={quiz_id}, answers={answers}")
+            return Response({
+                'error': 'quiz_id and answers are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Looking up daily quiz with id={quiz_id}")
+        daily_quiz = DailyQuiz.objects.get(id=quiz_id, is_active=True)
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Quiz found: {daily_quiz.title} with {daily_quiz.total_questions} questions")
+        
+        # Check if there's an existing attempt
+        existing_attempt = UserDailyQuizAttempt.objects.filter(
+            daily_quiz=daily_quiz,
+            user_id=user_id
+        ).first()
+        
+        if existing_attempt:
+            logger.info(f"[SUBMIT_DAILY_QUIZ] Existing attempt found for user. Completed: {existing_attempt.completed_at is not None}")
+        else:
+            logger.info(f"[SUBMIT_DAILY_QUIZ] No existing attempt found for user")
+        
+        if existing_attempt and existing_attempt.completed_at is not None:
+            logger.warning(f"[SUBMIT_DAILY_QUIZ] Quiz already attempted by user")
+            return Response({
+                'error': 'Quiz already attempted',
+                'message': 'You can only attempt each Daily Quiz once'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get questions and check answers (limit to first 5 to enforce business rule)
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Fetching questions for quiz")
+        questions = list(DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('order')[:5])
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Found {len(questions)} questions")
+        
+        correct_count = 0
+        results = []
+        
+        for idx, q in enumerate(questions, 1):
+            # Safely parse user's answer (option index). Clients may send keys as int or str.
+            ua = answers.get(str(idx), answers.get(idx, -1))
+            try:
+                user_answer_idx = int(ua)
+            except Exception as e:
+                logger.warning(f"[SUBMIT_DAILY_QUIZ] Failed to parse answer for question {idx}: {e}")
+                user_answer_idx = -1
+
+            # Safely compute correct index from letter (A=0, B=1...)
+            correct_idx = -1
+            try:
+                correct_ans = (q.correct_answer or '').strip()
+                if correct_ans:
+                    correct_idx = ord(correct_ans[0].upper()) - ord('A')
+            except Exception as e:
+                logger.warning(f"[SUBMIT_DAILY_QUIZ] Failed to compute correct index for question {idx}: {e}")
+                correct_idx = -1
+
+            is_correct = (user_answer_idx == correct_idx)
+            if is_correct:
+                correct_count += 1
+                logger.debug(f"[SUBMIT_DAILY_QUIZ] Q{idx}: CORRECT")
+            else:
+                logger.debug(f"[SUBMIT_DAILY_QUIZ] Q{idx}: INCORRECT (user={user_answer_idx}, correct={correct_idx})")
+
+            # Ensure options is a list
+            options = q.options if isinstance(q.options, list) else []
+            # Safe text values for user's answer and correct answer
+            user_answer_text = options[user_answer_idx] if 0 <= user_answer_idx < len(options) else "No answer"
+            correct_answer_text = options[correct_idx] if 0 <= correct_idx < len(options) else (q.correct_answer or '')
+
+            results.append({
+                'question_id': idx,
+                'question': getattr(q, 'question_text', '') or str(q),
+                'options': options,
+                'user_answer': user_answer_text,
+                'correct_answer': correct_answer_text,
+                'is_correct': is_correct,
+                'explanation': getattr(q, 'explanation', '') or '',
+                'fun_fact': getattr(q, 'fun_fact', '') or '',
+                'category': getattr(q, 'category', '') or '',
+            })
+        
+        total_questions = len(questions)
+        score_percentage = (correct_count / total_questions * 100) if total_questions > 0 else 0
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Quiz results: {correct_count}/{total_questions} correct ({score_percentage}%)")
+        
+        # Calculate coins using settings: attempt bonus + per correct answer
+        attempt_bonus = settings.daily_quiz_attempt_bonus
+        per_correct = settings.daily_quiz_coins_per_correct
+        coins_from_correct = correct_count * per_correct
+        max_possible = attempt_bonus + (total_questions * per_correct)  # Dynamic based on question count
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Coin calculation: attempt_bonus={attempt_bonus}, per_correct={per_correct}, coins_from_correct={coins_from_correct}")
+        
+        # Save attempt and award coins in a transaction
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Starting transaction to save attempt and award coins")
+        with transaction.atomic():
+            user_coins, created = UserCoins.objects.get_or_create(
+                user_id=user_id,
+                defaults={'total_coins': 0, 'lifetime_coins': 0}
+            )
+            logger.info(f"[SUBMIT_DAILY_QUIZ] User coins object: created={created}, total_coins={user_coins.total_coins}")
+
+            # If an attempt record exists and was started (but not completed), update it
+            if existing_attempt and existing_attempt.completed_at is None:
+                logger.info(f"[SUBMIT_DAILY_QUIZ] Updating existing attempt record")
+                attempt = existing_attempt
+                # compute coins to add only for correct answers (attempt bonus should already be awarded on start)
+                coins_to_add = coins_from_correct
+                attempt.coins_earned = (attempt.coins_earned or 0) + coins_to_add
+                attempt.answers = answers
+                attempt.correct_count = correct_count
+                attempt.total_questions = total_questions
+                attempt.score_percentage = score_percentage
+                attempt.completed_at = timezone.now()
+                attempt.time_taken_seconds = time_taken
+                attempt.save()
+                logger.info(f"[SUBMIT_DAILY_QUIZ] Attempt record updated. Coins to add: {coins_to_add}")
+
+                # Award coins for correct answers only
+                if coins_to_add > 0:
+                    logger.info(f"[SUBMIT_DAILY_QUIZ] Adding {coins_to_add} coins for correct answers")
+                    user_coins.add_coins(coins_to_add, reason=f"Daily Quiz correct answers {daily_quiz.date}")
+            else:
+                # No prior start record - award attempt bonus + correct answer coins now
+                logger.info(f"[SUBMIT_DAILY_QUIZ] Creating new attempt record")
+                coins_earned = attempt_bonus + coins_from_correct
+                attempt = UserDailyQuizAttempt.objects.create(
+                    daily_quiz=daily_quiz,
+                    user_id=user_id,
+                    answers=answers,
+                    correct_count=correct_count,
+                    total_questions=total_questions,
+                    score_percentage=score_percentage,
+                    coins_earned=coins_earned,
+                    completed_at=timezone.now(),
+                    time_taken_seconds=time_taken,
+                )
+                logger.info(f"[SUBMIT_DAILY_QUIZ] Attempt record created. Total coins to award: {coins_earned}")
+
+                # Award coins
+                logger.info(f"[SUBMIT_DAILY_QUIZ] Adding {coins_earned} coins (attempt_bonus={attempt_bonus} + correct={coins_from_correct})")
+                user_coins.add_coins(coins_earned, reason=f"Daily Quiz {daily_quiz.date}")
+        
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Transaction completed. User total coins: {user_coins.total_coins}")
+        
+        response_data = {
+            'success': True,
+            'message': f'🎉 Quiz completed! You earned {attempt.coins_earned} coins!',
+            'result': {
+                'correct_count': correct_count,
+                'total_questions': total_questions,
+                'score_percentage': round(score_percentage, 2),
+                'coins_earned': attempt.coins_earned,
+                'time_taken_seconds': time_taken,
+                'attempt_bonus': attempt_bonus,
+                'per_correct': per_correct,
+                'max_possible': max_possible,
+            },
+            'coin_breakdown': {
+                'attempt_bonus': attempt_bonus if not (existing_attempt and existing_attempt.completed_at is None) else 0,
+                'correct_answers': correct_count,
+                'coins_per_correct': per_correct,
+                'correct_answer_coins': coins_from_correct,
+                'total_earned': attempt.coins_earned,
+            },
+            'results': results,
+            'total_coins': user_coins.total_coins,
+            'show_coin_animation': True,
+        }
+        logger.info(f"[SUBMIT_DAILY_QUIZ] Returning response: {response_data}")
+        return Response(response_data, status=status.HTTP_200_OK)
+
+        
+    except DailyQuiz.DoesNotExist:
+        logger.error(f"[SUBMIT_DAILY_QUIZ] Quiz not found with id={quiz_id}")
+        return Response({
+            'error': 'Quiz not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        # Log full exception with stack trace for debugging
+        logger.exception(f"[SUBMIT_DAILY_QUIZ] ERROR while submitting daily quiz: {str(e)}")
+        return Response({
+            'error': 'Internal server error while processing submission',
+            'debug_message': str(e) if hasattr(e, '__str__') else 'Unknown error'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_user_coins(request):
+    """
+    Get user's coin balance and stats
+    """
+    user_id = request.query_params.get('user_id', 'anonymous')
+    
+    try:
+        user_coins = UserCoins.objects.filter(user_id=user_id).first()
+        
+        if not user_coins:
+            return Response({
+                'user_id': user_id,
+                'total_coins': 0,
+                'lifetime_coins': 0,
+                'coins_spent': 0,
+            }, status=status.HTTP_200_OK)
+        
+        # Get recent transactions
+        recent_transactions = CoinTransaction.objects.filter(
+            user_coins=user_coins
+        ).order_by('-created_at')[:10]
+        
+        transactions_data = [{
+            'amount': t.amount,
+            'type': t.transaction_type,
+            'reason': t.reason,
+            'created_at': t.created_at,
+        } for t in recent_transactions]
+        
+        return Response({
+            'user_id': user_id,
+            'total_coins': user_coins.total_coins,
+            'lifetime_coins': user_coins.lifetime_coins,
+            'coins_spent': user_coins.coins_spent,
+            'recent_transactions': transactions_data,
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_quiz_history(request):
+    """
+    Get user's quiz attempt history
+    """
+    user_id = request.query_params.get('user_id', 'anonymous')
+    limit = int(request.query_params.get('limit', 30))
+    
+    try:
+        attempts = UserDailyQuizAttempt.objects.filter(
+            user_id=user_id
+        ).select_related('daily_quiz').order_by('-started_at')[:limit]
+        
+        history_data = []
+        for attempt in attempts:
+            history_data.append({
+                'date': attempt.daily_quiz.date,
+                'quiz_title': attempt.daily_quiz.title,
+                'correct_count': attempt.correct_count,
+                'total_questions': attempt.total_questions,
+                'score_percentage': attempt.score_percentage,
+                'coins_earned': attempt.coins_earned,
+                'completed_at': attempt.completed_at,
+            })
+        
+        # Calculate stats
+        total_attempts = attempts.count()
+        total_coins_earned = sum(a.coins_earned for a in attempts)
+        avg_score = sum(a.score_percentage for a in attempts) / total_attempts if total_attempts > 0 else 0
+        
+        return Response({
+            'user_id': user_id,
+            'history': history_data,
+            'stats': {
+                'total_attempts': total_attempts,
+                'total_coins_earned': total_coins_earned,
+                'average_score': round(avg_score, 2),
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_daily_quiz_attempt_detail(request):
+    """
+    Get detailed per-question results for a user's completed attempt
+    GET params: user_id, quiz_id
+    """
+    user_id = request.query_params.get('user_id', 'anonymous')
+    quiz_id = request.query_params.get('quiz_id')
+
+    if not quiz_id:
+        return Response({'error': 'quiz_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        daily_quiz = DailyQuiz.objects.get(id=quiz_id, is_active=True)
+        attempt = UserDailyQuizAttempt.objects.filter(daily_quiz=daily_quiz, user_id=user_id).first()
+
+        if not attempt or not attempt.completed_at:
+            return Response({'error': 'No completed attempt found for this user and quiz'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Reconstruct results
+        questions = list(DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('order')[:attempt.total_questions])
+        results = []
+        for idx, q in enumerate(questions, 1):
+            user_answer_idx = attempt.answers.get(str(idx), -1)
+            correct_idx = ord(q.correct_answer.upper()) - ord('A') if q.correct_answer else -1
+            options = q.options if isinstance(q.options, list) else []
+            user_answer_text = options[user_answer_idx] if 0 <= user_answer_idx < len(options) else 'No answer'
+            correct_answer_text = options[correct_idx] if 0 <= correct_idx < len(options) else q.correct_answer
+
+            results.append({
+                'question_id': idx,
+                'question': q.question_text,
+                'options': options,
+                'user_answer': user_answer_text,
+                'user_answer_index': user_answer_idx,
+                'correct_answer': correct_answer_text,
+                'correct_answer_index': correct_idx,
+                'is_correct': (user_answer_idx == correct_idx),
+                'explanation': q.explanation,
+                'fun_fact': q.fun_fact or '',
+                'category': q.category,
+            })
+
+        return Response({
+            'success': True,
+            'quiz_id': str(daily_quiz.id),
+            'date': str(daily_quiz.date),
+            'results': results,
+            'correct_count': attempt.correct_count,
+            'total_questions': attempt.total_questions,
+            'score_percentage': attempt.score_percentage,
+            'coins_earned': attempt.coins_earned,
+            'completed_at': attempt.completed_at,
+        }, status=status.HTTP_200_OK)
+
+    except DailyQuiz.DoesNotExist:
+        return Response({'error': 'Quiz not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error fetching attempt detail: {e}", exc_info=True)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_quiz_settings(request):
+    """
+    Get global quiz settings including coin rewards.
+    Admins can edit these in Django admin panel in real-time.
+    Public endpoint - no authentication required.
+    
+    GET /api/quiz/settings/
+    
+    Returns:
+        {
+            'success': true,
+            'settings': {
+                'daily_quiz': {...},
+                'pair_quiz': {...},
+                'coin_system': {...}
+            },
+            'updated_at': timestamp
+        }
+    """
+    try:
+        # Try to get settings, create default if not exists
+        try:
+            from .models import QuizSettings
+            settings = QuizSettings.get_settings()
+        except Exception as e:
+            logger.warning(f"QuizSettings model not yet initialized: {e}")
+            # Return default settings if model fails
+            settings = None
+        
+        if settings:
+            return Response({
+                'success': True,
+                'settings': {
+                    'daily_quiz': {
+                        'attempt_bonus': settings.daily_quiz_attempt_bonus,
+                        'coins_per_correct': settings.daily_quiz_coins_per_correct,
+                        'perfect_score_bonus': settings.daily_quiz_perfect_score_bonus,
+                    },
+                    'pair_quiz': {
+                        'enabled': settings.pair_quiz_enabled,
+                        'session_timeout': settings.pair_quiz_session_timeout,
+                        'max_questions': settings.pair_quiz_max_questions,
+                    },
+                    'coin_system': {
+                        'coin_to_currency_rate': float(settings.coin_to_currency_rate),
+                        'min_coins_for_redemption': settings.min_coins_for_redemption,
+                    }
+                },
+                'updated_at': settings.updated_at.isoformat() if settings.updated_at else None,
+            }, status=status.HTTP_200_OK)
+        else:
+            # Return default hardcoded settings as fallback
+            return Response({
+                'success': True,
+                'settings': {
+                    'daily_quiz': {
+                        'attempt_bonus': 5,
+                        'coins_per_correct': 5,
+                        'perfect_score_bonus': 10,
+                    },
+                    'pair_quiz': {
+                        'enabled': True,
+                        'session_timeout': 30,
+                        'max_questions': 20,
+                    },
+                    'coin_system': {
+                        'coin_to_currency_rate': 0.10,
+                        'min_coins_for_redemption': 10,
+                    }
+                },
+                'updated_at': None,
+                'note': 'Using default settings - database not fully initialized',
+            }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching quiz settings: {e}", exc_info=True)
+        # Return default settings even on error
+        return Response({
+            'success': True,
+            'settings': {
+                'daily_quiz': {
+                    'attempt_bonus': 5,
+                    'coins_per_correct': 5,
+                    'perfect_score_bonus': 10,
+                },
+                'pair_quiz': {
+                    'enabled': True,
+                    'session_timeout': 30,
+                    'max_questions': 20,
+                },
+                'coin_system': {
+                    'coin_to_currency_rate': 0.10,
+                    'min_coins_for_redemption': 10,
+                }
+            },
+            'updated_at': None,
+            'note': 'Using fallback default settings',
+        }, status=status.HTTP_200_OK)
