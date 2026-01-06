@@ -1,0 +1,52 @@
+{% extends "admin/change_list.html" %}
+{% load admin_urls static %}
+
+{% block content_title %}
+    <h1>Coin Withdrawal Management</h1>
+{% endblock %}
+
+{% block result_list %}
+    <!-- Statistics Panel -->
+    <div class="withdrawal-stats">
+        <div class="stat-item">
+            <span class="stat-number">{{ total_withdrawals|default:0 }}</span>
+            <div class="stat-label">Total Withdrawals</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number">{{ pending_count|default:0 }}</span>
+            <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number">{{ completed_count|default:0 }}</span>
+            <div class="stat-label">Completed</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number">{{ failed_count|default:0 }}</span>
+            <div class="stat-label">Rejected</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number">{{ total_pending_amount|default:'₹0.00' }}</span>
+            <div class="stat-label">Pending Amount</div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-number">{{ total_completed_amount|default:'₹0.00' }}</span>
+            <div class="stat-label">Completed Amount</div>
+        </div>
+    </div>
+
+    <!-- Original result list -->
+    {{ block.super }}
+{% endblock %}
+
+{% block footer %}
+    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+        <h4 style="margin: 0 0 10px 0; color: #495057;">Quick Actions Guide</h4>
+        <ul style="margin: 0; padding-left: 20px; color: #6c757d; font-size: 14px;">
+            <li><strong>Approve:</strong> Mark withdrawal as completed for manual UPI payment</li>
+            <li><strong>Reject:</strong> Refund coins to user and cancel withdrawal</li>
+            <li><strong>Status Colors:</strong> Yellow=Pending, Blue=Processing, Green=Completed, Red=Failed</li>
+            <li><strong>Search:</strong> Use user ID, UPI ID, or withdrawal ID for quick lookup</li>
+        </ul>
+    </div>
+    {{ block.super }}
+{% endblock %}
