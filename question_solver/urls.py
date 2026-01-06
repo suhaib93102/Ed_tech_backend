@@ -110,6 +110,14 @@ from .subscription_api_views import (
     cancel_subscription as cancel_user_subscription,
     get_available_plans
 )
+from .usage_api_views import (
+    usage_dashboard,
+    feature_status,
+    check_feature_usage,
+    record_feature_usage,
+    subscription_status,
+    usage_stats
+)
 
 urlpatterns = [
     path('solve/', QuestionSolverView.as_view(), name='solve-question'),
@@ -215,4 +223,12 @@ urlpatterns = [
     path('pair-quiz/join/', JoinPairQuizView.as_view(), name='join-pair-quiz'),
     path('pair-quiz/<str:session_id>/', PairQuizSessionView.as_view(), name='pair-quiz-session'),
     path('pair-quiz/<str:session_id>/cancel/', CancelPairQuizView.as_view(), name='cancel-pair-quiz'),
+    
+    # Usage Dashboard & Feature Tracking endpoints (NEW)
+    path('usage/dashboard/', usage_dashboard, name='usage-dashboard'),
+    path('usage/feature/<str:feature_name>/', feature_status, name='feature-status'),
+    path('usage/check/', check_feature_usage, name='check-feature-usage'),
+    path('usage/record/', record_feature_usage, name='record-feature-usage'),
+    path('usage/subscription/', subscription_status, name='usage-subscription-status'),
+    path('usage/stats/', usage_stats, name='usage-stats'),
 ]

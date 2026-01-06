@@ -7,6 +7,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import UserSubscription
 from django.utils import timezone
+from django.http import JsonResponse
+import jwt
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,67 @@ def require_feature_access(feature_name):
         return wrapper
     return decorator
 
+
+def require_auth(view_func):
+    """
+    Decorator to verify JWT token and inject user_id into request
+    Usage: @require_auth
+    Extracts user_id from JWT token in Authorization header
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        from django.conf import settings
+        
+        # Get authorization header
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        
+        if not auth_header.startswith('Bearer '):
+            return JsonResponse({
+                'success': False,
+                'error': 'Missing or invalid authorization header'
+            }, status=401)
+        
+        token = auth_header.split(' ')[1]
+        
+        try:
+            # Decode JWT token
+            secret_key = getattr(settings, 'SECRET_KEY', 'your-secret-key')
+            payload = jwt.decode(token, secret_key, algorithms=['HS256'])
+            
+            # Extract user_id from token
+            user_id = payload.get('user_id') or payload.get('id') or payload.get('sub')
+            
+            if not user_id:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid token: user_id not found'
+                }, status=401)
+            
+            # Inject user_id into request
+            request.user_id = user_id
+            request.user_token = payload
+            
+            # Call the actual view
+            return view_func(request, *args, **kwargs)
+        
+        except jwt.ExpiredSignatureError:
+            return JsonResponse({
+                'success': False,
+                'error': 'Token has expired'
+            }, status=401)
+        except jwt.InvalidTokenError as e:
+            return JsonResponse({
+                'success': False,
+                'error': f'Invalid token: {str(e)}'
+            }, status=401)
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'success': False,
+                'error': f'Authentication failed: {str(e)}'
+            }, status=401)
+    
+    return wrapper
 
 def check_feature_access_class_based(feature_name):
     """

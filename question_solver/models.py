@@ -8,9 +8,11 @@ class SubscriptionPlan(models.Model):
     """
     Pricing Plans for the EdTech platform
     - Free: 3 uses per feature
-    - Premium: ₹1 for first month, then ₹99/month (auto-pay)
+    - Basic: ₹1 for first month, then ₹99/month
+    - Premium: ₹199 for first month, then ₹499/month (all features unlimited)
     """
     PLAN_TYPE_CHOICES = [
+        ('free', 'FREE'),
         ('basic', 'BASIC'),
         ('premium', 'PREMIUM'),
     ]
@@ -69,7 +71,28 @@ class SubscriptionPlan(models.Model):
     
     @staticmethod
     def initialize_default_plans():
-        """Initialize default FREE and PREMIUM plans"""
+        """Initialize default FREE, BASIC and PREMIUM plans"""
+        # FREE Plan (Limited features, no payment)
+        SubscriptionPlan.objects.get_or_create(
+            name='free',
+            defaults={
+                'display_name': 'FREE Plan',
+                'description': 'Free forever · Limited features · 3 uses per feature per month',
+                'first_month_price': 0.00,
+                'recurring_price': 0.00,
+                'mock_test_limit': 3,
+                'quiz_limit': 3,
+                'flashcards_limit': 3,
+                'ask_question_limit': 3,
+                'predicted_questions_limit': 3,
+                'youtube_summarizer_limit': 3,
+                'pyq_features_limit': 3,
+                'pair_quiz_limit': 0,
+                'previous_papers_limit': 0,
+                'daily_quiz_limit': 0,
+            }
+        )
+        
         # BASIC Plan (₹1 for first month, ₹99/month thereafter)
         SubscriptionPlan.objects.get_or_create(
             name='basic',
@@ -78,26 +101,25 @@ class SubscriptionPlan(models.Model):
                 'description': '₹1 for first month · ₹99/month from next month · Auto-debit enabled · Cancel anytime',
                 'first_month_price': 1.00,
                 'recurring_price': 99.00,
-                'mock_test_limit': 2,
-                'quiz_limit': 5,
-                'flashcards_limit': 20,
-                'ask_question_limit': 5,
-                'predicted_questions_limit': 3,
-                'youtube_summarizer_limit': 2,
-                # Removed features
+                'mock_test_limit': 10,
+                'quiz_limit': 20,
+                'flashcards_limit': 50,
+                'ask_question_limit': 15,
+                'predicted_questions_limit': 10,
+                'youtube_summarizer_limit': 8,
+                'pyq_features_limit': 30,
                 'pair_quiz_limit': 0,
                 'previous_papers_limit': 0,
-                'pyq_features_limit': 10,  # PYQ is kept
                 'daily_quiz_limit': 0,
             }
         )
         
-        # PREMIUM Plan (All features unlimited)
+        # PREMIUM Plan (₹199 for first month, ₹499/month thereafter - All features unlimited)
         SubscriptionPlan.objects.get_or_create(
             name='premium',
             defaults={
                 'display_name': 'PREMIUM Plan',
-                'description': 'All features unlimited · Priority support · Advanced analytics',
+                'description': '₹199 first month · ₹499/month · All features unlimited · Priority support',
                 'first_month_price': 199.00,
                 'recurring_price': 499.00,
                 'mock_test_limit': None,  # Unlimited
@@ -106,10 +128,9 @@ class SubscriptionPlan(models.Model):
                 'ask_question_limit': None,  # Unlimited
                 'predicted_questions_limit': None,  # Unlimited
                 'youtube_summarizer_limit': None,  # Unlimited
-                # Removed features
+                'pyq_features_limit': None,  # Unlimited
                 'pair_quiz_limit': None,
                 'previous_papers_limit': None,
-                'pyq_features_limit': None,  # PYQ Unlimited
                 'daily_quiz_limit': None,
             }
         )
@@ -118,23 +139,27 @@ class SubscriptionPlan(models.Model):
 class UserSubscription(models.Model):
     """Track user subscription status and feature limits"""
     PLAN_CHOICES = [
+        ('free', 'FREE'),
         ('basic', 'BASIC'),
         ('premium', 'PREMIUM'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_id = models.CharField(max_length=255, unique=True)  # Can be device ID or user email
-    plan = models.CharField(max_length=50, choices=PLAN_CHOICES, default='basic')
+    plan = models.CharField(max_length=50, choices=PLAN_CHOICES, default='free')
     subscription_plan = models.ForeignKey(SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True)
     
-    # Feature usage tracking (monthly reset) - ONLY 7 FEATURES
+    # Feature usage tracking (monthly reset)
     mock_test_used = models.IntegerField(default=0)
     quiz_used = models.IntegerField(default=0)
     flashcards_used = models.IntegerField(default=0)
     ask_question_used = models.IntegerField(default=0)
     predicted_questions_used = models.IntegerField(default=0)
     youtube_summarizer_used = models.IntegerField(default=0)
-    pyqs_used = models.IntegerField(default=0)  # PYQ
+    pyqs_used = models.IntegerField(default=0)
+    pair_quiz_used = models.IntegerField(default=0)
+    previous_papers_used = models.IntegerField(default=0)
+    daily_quiz_used = models.IntegerField(default=0)
     
     # Razorpay Subscription fields
     razorpay_customer_id = models.CharField(max_length=255, blank=True, null=True)
@@ -194,6 +219,9 @@ class UserSubscription(models.Model):
             'predicted_questions': {'limit': plan.predicted_questions_limit, 'used': self.predicted_questions_used},
             'youtube_summarizer': {'limit': plan.youtube_summarizer_limit, 'used': self.youtube_summarizer_used},
             'pyqs': {'limit': plan.pyq_features_limit, 'used': self.pyqs_used},
+            'pair_quiz': {'limit': plan.pair_quiz_limit, 'used': self.pair_quiz_used},
+            'previous_papers': {'limit': plan.previous_papers_limit, 'used': self.previous_papers_used},
+            'daily_quiz': {'limit': plan.daily_quiz_limit, 'used': self.daily_quiz_used},
         }
     
     def can_use_feature(self, feature_name):
@@ -225,6 +253,9 @@ class UserSubscription(models.Model):
         self.predicted_questions_used = 0
         self.youtube_summarizer_used = 0
         self.pyqs_used = 0
+        self.pair_quiz_used = 0
+        self.previous_papers_used = 0
+        self.daily_quiz_used = 0
         self.usage_reset_date = timezone.now()
         self.save()
     
