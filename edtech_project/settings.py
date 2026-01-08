@@ -59,19 +59,7 @@ MIDDLEWARE = [
 
 # CORS settings - Production Grade Configuration
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:8003",
-    "http://127.0.0.1:8003",
-    "http://localhost:8081",
-    "http://127.0.0.1:8081",
-    "http://localhost:19006",  # Expo web default port
-    "http://127.0.0.1:19006",
-    "http://localhost:8082",
-    "http://127.0.0.1:8082",
-    "http://56.228.2.165"
+    "*"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
