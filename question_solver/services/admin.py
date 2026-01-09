@@ -450,9 +450,9 @@ class CoinTransactionAdmin(admin.ModelAdmin):
     
     list_display = ('id', 'user_display', 'amount_display', 'transaction_type', 'upi_info_display', 'reason', 'created_at')
     list_filter = ('transaction_type', 'created_at')
-    search_fields = ('user_coins__user_id', 'reason')
+    search_fields = ('user_coins__user_id', 'reason', 'metadata')
     ordering = ('-created_at',)
-    readonly_fields = ('id', 'user_coins', 'amount', 'transaction_type', 'reason', 'created_at')
+    readonly_fields = ('id', 'user_coins', 'amount', 'transaction_type', 'reason', 'created_at', 'metadata')
     
     def user_display(self, obj):
         return obj.user_coins.user_id
@@ -653,42 +653,6 @@ class CoinWithdrawalAdmin(admin.ModelAdmin):
         )
     upi_display.short_description = 'UPI ID / Bank'
     upi_display.admin_order_field = 'upi_id'
-    
-    def bank_info_display(self, obj):
-        """Display detailed bank information for detail view"""
-        if not obj.upi_id or '@' not in obj.upi_id:
-            return format_html('<span style="color: #dc3545;">Invalid UPI ID format</span>')
-        
-        upi_username, bank_code = obj.upi_id.split('@')
-        
-        # Map common bank codes to readable names
-        bank_names = {
-            'okhdfcbank': ('HDFC Bank', '#0066cc'),
-            'okaxis': ('Axis Bank', '#e74c3c'),
-            'okicici': ('ICICI Bank', '#1f5091'),
-            'oksbi': ('State Bank of India', '#004687'),
-            'sbi': ('State Bank of India', '#004687'),
-            'hdfc': ('HDFC Bank', '#0066cc'),
-            'paytm': ('Paytm Payments Bank', '#002970'),
-            'ybl': ('PhonePe UPI', '#5f27cd'),
-            'airtel': ('Airtel Payments Bank', '#E20719'),
-            'googlepay': ('Google Pay', '#4285f4'),
-            'phonepe': ('PhonePe', '#5f27cd'),
-        }
-        
-        bank_info = bank_names.get(bank_code.lower(), (bank_code.upper(), '#6c757d'))
-        bank_name, bank_color = bank_info
-        
-        return format_html(
-            '<div style="border-left: 4px solid {}; padding: 12px; background: #f8f9fa; border-radius: 4px; line-height: 1.8;">'
-            '<div><strong>UPI Username:</strong> <code>{}</code></div>'
-            '<div><strong>Bank Code:</strong> <code>{}</code></div>'
-            '<div><strong>Bank Name:</strong> <span style="background: {}; color: white; padding: 4px 10px; border-radius: 3px; display: inline-block; font-weight: bold;">{}</span></div>'
-            '<div style="margin-top: 8px; font-size: 11px; color: #6c757d;"><em>Bank ID extracted from UPI details</em></div>'
-            '</div>',
-            bank_color, upi_username, bank_code, bank_color, bank_name
-        )
-    bank_info_display.short_description = 'Bank Information'
 
     def status_badge(self, obj):
         """Display status with professional badges"""
