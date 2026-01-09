@@ -514,13 +514,21 @@ class FlashcardGeneratorView(APIView):
                 try:
                     # Extract text from document (using OCR for images, or read text files)
                     if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+                        logger.info(f"Processing image file: {document_file.name}")
                         ocr_result = ocr_service.extract_text_from_image(file_path)
-                        if ocr_result['success']:
-                            topic = ocr_result['text']
+                        if ocr_result['success'] and ocr_result.get('text', '').strip():
+                            topic = ocr_result['text'].strip()
+                            logger.info(f"OCR successful: extracted {len(topic)} characters")
                         else:
+                            logger.warning(f"OCR failed for {document_file.name}: {ocr_result.get('error', 'Unknown error')}")
                             return Response({
-                                'error': 'Failed to extract text from document',
-                                'details': ocr_result.get('error', 'Unknown error')
+                                'error': 'Could not extract readable text from the image',
+                                'details': 'Please ensure the image contains clear, readable text and try again. Supported formats: PNG, JPG, JPEG',
+                                'ocr_details': {
+                                    'success': ocr_result.get('success', False),
+                                    'confidence': ocr_result.get('confidence', 0),
+                                    'error': ocr_result.get('error', 'Unknown OCR error')
+                                }
                             }, status=status.HTTP_400_BAD_REQUEST)
                     elif document_file.name.lower().endswith('.txt'):
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -1193,7 +1201,7 @@ RULES FOR QUESTIONS:
 - Include expected answer length to guide studying
 """
 
-            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('gemini-pro')
+            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('models/gemini-2.0-flash')
             try:
                 response = model.generate_content(prompt)
             except Exception as e:

@@ -17,11 +17,11 @@ class YouTubeService:
     def search_concept_videos(self, query, max_results=3):
         """
         Search for concept explanation videos on YouTube
-        
+
         Args:
             query: Search query (concept/topic)
             max_results: Number of videos to return
-            
+
         Returns:
             dict: {
                 'success': boolean,
@@ -29,13 +29,17 @@ class YouTubeService:
             }
         """
         if not self.api_key:
-            logger.warning("YouTube API key not configured")
-            return self._mock_video_results(query, max_results)
-        
+            logger.error("YouTube API key not configured")
+            return {
+                'success': False,
+                'error': 'YouTube API key not configured',
+                'videos': []
+            }
+
         try:
             # Enhance query for educational content
             enhanced_query = f"{query} tutorial explanation"
-            
+
             params = {
                 'part': 'snippet',
                 'q': enhanced_query,
@@ -47,26 +51,26 @@ class YouTubeService:
                 'videoEmbeddable': 'true',
                 'order': 'relevance'
             }
-            
+
             response = requests.get(self.base_url, params=params, timeout=10)
             response.raise_for_status()
-            
+
             data = response.json()
-            
+
             videos = []
             if 'items' in data:
                 for item in data['items']:
                     video = self._parse_video_item(item)
                     if video:
                         videos.append(video)
-            
+
             return {
                 'success': True,
                 'videos': videos,
                 'query': query,
                 'count': len(videos)
             }
-            
+
         except Exception as e:
             logger.error(f"YouTube search failed: {e}")
             return {
@@ -172,32 +176,6 @@ class YouTubeService:
         enhanced_query = f"{topic} {keyword}"
         
         return self.search_concept_videos(enhanced_query, max_results)
-    
-    def _mock_video_results(self, query, max_results):
-        """
-        Mock video results for testing when API key not available
-        """
-        mock_videos = []
-        
-        for i in range(min(max_results, 3)):
-            mock_videos.append({
-                'video_id': f'mock_video_{i+1}',
-                'title': f'Learn {query} - Concept Explanation Part {i+1}',
-                'description': f'Complete tutorial and explanation of {query}...',
-                'thumbnail': 'https://via.placeholder.com/320x180?text=Video+Thumbnail',
-                'channel_title': 'Educational Channel',
-                'published_at': '2024-01-01T00:00:00Z',
-                'url': f'https://youtube.com/watch?v=mock_{i+1}',
-                'embed_url': f'https://youtube.com/embed/mock_{i+1}'
-            })
-        
-        return {
-            'success': True,
-            'videos': mock_videos,
-            'query': query,
-            'count': len(mock_videos),
-            'warning': 'Using mock data - YouTube API key not configured'
-        }
 
 
 # Global instance

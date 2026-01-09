@@ -23,9 +23,9 @@ class GeminiService:
     """Service for generating educational content using Gemini AI"""
     
     def __init__(self):
-        # Using gemini-pro (stable model for responses)
+        # Using gemini-2.0-flash (latest stable flash model for responses)
         try:
-            self.model = genai.GenerativeModel('gemini-pro')
+            self.model = genai.GenerativeModel('models/gemini-2.0-flash')
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model: {e}")
             self.model = None
@@ -128,57 +128,82 @@ Rules:
     
     def generate_flashcards(self, topic: str, num_cards: int = 10) -> Dict[str, Any]:
         """
-        Generate flashcards based on a topic
-        
+        Generate concise, high-quality flashcards from topic or text content
+
         Args:
             topic: The topic or text content to generate flashcards from
             num_cards: Number of flashcards to generate (default: 10)
-        
+
         Returns:
             Dictionary containing flashcard data
         """
         try:
-            prompt = f"""Generate {num_cards} educational flashcards about the following topic:
+            prompt = f"""You are an AI flashcard generator for an EdTech platform.
 
-Topic: {topic}
+Generate {num_cards} concise, high-quality flashcards from the following input:
 
-Please format the response as a valid JSON object with the following structure:
+INPUT CONTENT:
+{topic}
+
+FLASHCARD RULES (STRICT):
+- Each flashcard must test conceptual understanding, not rote memorization
+- Question must be clear and exam-oriented
+- Answer must be short, precise, and factually correct
+- Avoid duplicate or semantically identical questions
+- Difficulty should be medium (student-friendly)
+- Focus on key concepts, principles, and relationships
+
+Return ONLY valid JSON in this format:
 {{
-    "title": "Flashcard Set Title",
-    "topic": "{topic}",
+    "title": "Flashcard Set - [Topic Summary]",
+    "topic": "{topic[:100]}...",
+    "total_cards": {num_cards},
     "cards": [
         {{
             "id": 1,
-            "front": "Question or concept on the front of the card",
-            "back": "Answer or explanation on the back of the card",
-            "category": "Category or subtopic"
+            "question": "Clear, exam-oriented question testing conceptual understanding?",
+            "answer": "Short, precise, and factually correct answer.",
+            "category": "Key concept or subtopic",
+            "difficulty": "medium",
+            "importance": "high|medium|low"
         }}
     ]
 }}
 
-Rules:
-- Make flashcards concise and focused on key concepts
-- Front should contain a question, term, or concept
-- Back should contain the answer, definition, or explanation
-- Include relevant categories for organization
-- Ensure JSON is properly formatted
+IMPORTANT:
+- Questions should require thinking, not just recall
+- Answers should be comprehensive but concise
+- Ensure variety in question types and concepts covered
+- All flashcards must be unique and non-redundant
 """
-            
-            logger.info(f"Generating flashcards for topic: {topic}")
+
+            logger.info(f"Generating {num_cards} conceptual flashcards for topic: {topic[:100]}...")
             response = self.model.generate_content(prompt)
-            
+
             # Extract JSON from response
             response_text = response.text.strip()
-            
+
             # Try to extract JSON from markdown code blocks if present
             if '```json' in response_text:
                 response_text = response_text.split('```json')[1].split('```')[0].strip()
             elif '```' in response_text:
                 response_text = response_text.split('```')[1].split('```')[0].strip()
-            
+
             flashcard_data = json.loads(response_text)
-            
-            logger.info(f"Successfully generated {len(flashcard_data.get('cards', []))} flashcards")
+
+            # Validate and ensure required fields
+            if 'cards' not in flashcard_data:
+                raise ValueError("Missing 'cards' field in response")
+
+            # Ensure each card has required fields with defaults
+            for i, card in enumerate(flashcard_data['cards']):
+                card['id'] = card.get('id', i + 1)
+                card['difficulty'] = card.get('difficulty', 'medium')
+                card['importance'] = card.get('importance', 'medium')
+                if 'category' not in card:
+                    card['category'] = 'General'
+
+            logger.info(f"Successfully generated {len(flashcard_data.get('cards', []))} conceptual flashcards")
             return {
                 'success': True,
                 'flashcards': flashcard_data

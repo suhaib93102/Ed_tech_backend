@@ -120,8 +120,8 @@ class SubscriptionPlan(models.Model):
             defaults={
                 'display_name': 'PREMIUM Plan',
                 'description': '₹199 first month · ₹499/month · All features unlimited · Priority support',
-                'first_month_price': 199.00,
-                'recurring_price': 499.00,
+                'first_month_price': 1.00,
+                'recurring_price': 99.00,
                 'mock_test_limit': None,  # Unlimited
                 'quiz_limit': None,  # Unlimited
                 'flashcards_limit': None,  # Unlimited

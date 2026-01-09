@@ -30,11 +30,12 @@ class GoogleOAuthCallbackView(APIView):
     def post(self, request):
         """
         Exchange Google authorization code for access token
-        Expected payload: {'code': 'authorization_code', 'provider': 'google'}
+        Expected payload: {'code': 'authorization_code', 'provider': 'google', 'guest_user_id': 'optional_guest_id'}
         """
         try:
             code = request.data.get('code')
             provider = request.data.get('provider', 'google')
+            guest_user_id = request.data.get('guest_user_id')  # Optional guest user ID for coin transfer
 
             if not code:
                 return Response(
@@ -67,10 +68,15 @@ class GoogleOAuthCallbackView(APIView):
             # Create or update user in database
             user, created = self._get_or_create_user(user_info, provider)
 
+            # Transfer guest coins if guest_user_id provided
+            coins_transferred = 0
+            if guest_user_id and guest_user_id != str(user.id):
+                coins_transferred = self._transfer_guest_coins(guest_user_id, str(user.id))
+
             # Generate JWT tokens
             tokens = self._generate_jwt_tokens(user)
 
-            return Response({
+            response_data = {
                 'success': True,
                 'user': {
                     'id': user.id,
@@ -81,7 +87,13 @@ class GoogleOAuthCallbackView(APIView):
                 },
                 'tokens': tokens,
                 'is_new_user': created,
-            }, status=status.HTTP_200_OK)
+            }
+
+            if coins_transferred > 0:
+                response_data['coins_transferred'] = coins_transferred
+                response_data['message'] = f'Welcome! {coins_transferred} coins from your guest session have been transferred to your account.'
+
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f'Google OAuth callback error: {str(e)}')
@@ -173,6 +185,55 @@ class GoogleOAuthCallbackView(APIView):
             user.save()
         
         return user, created
+
+    def _transfer_guest_coins(self, guest_user_id, authenticated_user_id):
+        """
+        Transfer coins from guest user to authenticated user
+        Returns the number of coins transferred
+        """
+        from .models import UserCoins, CoinTransaction
+        from django.db import transaction
+
+        try:
+            # Get guest user coins
+            guest_coins = UserCoins.objects.filter(user_id=guest_user_id).first()
+            if not guest_coins or guest_coins.total_coins <= 0:
+                logger.info(f"No coins to transfer from guest user {guest_user_id}")
+                return 0
+
+            coins_to_transfer = guest_coins.total_coins
+
+            with transaction.atomic():
+                # Get or create authenticated user coins
+                auth_coins, created = UserCoins.objects.get_or_create(
+                    user_id=authenticated_user_id,
+                    defaults={'total_coins': 0, 'lifetime_coins': 0}
+                )
+
+                # Transfer coins
+                auth_coins.total_coins += coins_to_transfer
+                auth_coins.lifetime_coins += coins_to_transfer
+                auth_coins.save()
+
+                # Create transaction record for the transfer
+                CoinTransaction.objects.create(
+                    user_coins=auth_coins,
+                    transaction_type='bonus',
+                    amount=coins_to_transfer,
+                    reason=f'Coins transferred from guest session {guest_user_id}'
+                )
+
+                # Clear guest user coins
+                guest_coins.total_coins = 0
+                guest_coins.save()
+
+                logger.info(f"Transferred {coins_to_transfer} coins from guest user {guest_user_id} to authenticated user {authenticated_user_id}")
+
+            return coins_to_transfer
+
+        except Exception as e:
+            logger.error(f"Error transferring guest coins from {guest_user_id} to {authenticated_user_id}: {str(e)}")
+            return 0
 
     def _generate_jwt_tokens(self, user):
         """
