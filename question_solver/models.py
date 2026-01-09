@@ -640,9 +640,10 @@ class UserDailyQuizAttempt(models.Model):
     
     class Meta:
         ordering = ['-started_at']
-        unique_together = ['daily_quiz', 'user_id']  # One attempt per user per day
+        # Removed unique_together to allow multiple attempts per day
         indexes = [
             models.Index(fields=['user_id', '-started_at']),
+            models.Index(fields=['daily_quiz', 'user_id']),  # Keep index for performance
         ]
     
     def __str__(self):

@@ -28,11 +28,15 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-key-change-in-producti
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-# ALLOWED_HOSTS configuration - be permissive in development, restrictive in production
-_default_hosts = 'localhost,127.0.0.1,ed-tech-backend-tzn8.onrender.com,*.onrender.com,127.0.0.1:8000,127.0.0.1:8003'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', _default_hosts).split(',')
-# Strip whitespace from each host
-ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS]
+# ALLOWED_HOSTS configuration
+# On Render, allow all hosts since it's behind a proxy
+if 'RENDER' in os.environ:
+    ALLOWED_HOSTS = ['*']
+else:
+    _default_hosts = 'localhost,127.0.0.1,ed-tech-backend-tzn8.onrender.com,*.onrender.com,127.0.0.1:8000,127.0.0.1:8003'
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', _default_hosts).split(',')
+    # Strip whitespace from each host
+    ALLOWED_HOSTS = [host.strip() for host in ALLOWED_HOSTS]
 
 
 # Application definition

@@ -98,26 +98,6 @@ def get_daily_quiz(request):
                 'message': 'Unable to create today\'s quiz. Please try again later.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Check if user already attempted today's quiz
-        existing_attempt = UserDailyQuizAttempt.objects.filter(
-            daily_quiz=daily_quiz,
-            user_id=user_id
-        ).first()
-        
-        if existing_attempt:
-            return Response({
-                'message': 'You have already completed today\'s quiz!',
-                'already_attempted': True,
-                'result': {
-                    'correct_count': existing_attempt.correct_count,
-                    'total_questions': existing_attempt.total_questions,
-                    'score_percentage': existing_attempt.score_percentage,
-                    'coins_earned': existing_attempt.coins_earned,
-                    'attempt_bonus': settings.daily_quiz_attempt_bonus,
-                    'per_correct': settings.daily_quiz_coins_per_correct,
-                }
-            }, status=status.HTTP_200_OK)
-        
         # Get questions (without revealing correct answers)
         questions = DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('order')
         
@@ -166,7 +146,7 @@ def get_daily_quiz(request):
                 'show_coin_animation': True,
             },
             'quiz_id': str(daily_quiz.id),
-            'already_attempted': False,
+            'already_attempted': False,  # Always allow attempts (multiple per day)
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -273,23 +253,16 @@ def submit_daily_quiz(request):
         daily_quiz = DailyQuiz.objects.get(id=quiz_id, is_active=True)
         logger.info(f"[SUBMIT_DAILY_QUIZ] Quiz found: {daily_quiz.title} with {daily_quiz.total_questions} questions")
         
-        # Check if there's an existing attempt
+        # Check if there's an existing attempt (for logging only, we allow multiple)
         existing_attempt = UserDailyQuizAttempt.objects.filter(
             daily_quiz=daily_quiz,
             user_id=user_id
         ).first()
         
         if existing_attempt:
-            logger.info(f"[SUBMIT_DAILY_QUIZ] Existing attempt found for user. Completed: {existing_attempt.completed_at is not None}")
+            logger.info(f"[SUBMIT_DAILY_QUIZ] User has {UserDailyQuizAttempt.objects.filter(daily_quiz=daily_quiz, user_id=user_id).count()} previous attempts")
         else:
-            logger.info(f"[SUBMIT_DAILY_QUIZ] No existing attempt found for user")
-        
-        if existing_attempt and existing_attempt.completed_at is not None:
-            logger.warning(f"[SUBMIT_DAILY_QUIZ] Quiz already attempted by user")
-            return Response({
-                'error': 'Quiz already attempted',
-                'message': 'You can only attempt each Daily Quiz once'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            logger.info(f"[SUBMIT_DAILY_QUIZ] First attempt for user today")
         
         # Get questions and check answers (limit to first 5 to enforce business rule)
         logger.info(f"[SUBMIT_DAILY_QUIZ] Fetching questions for quiz")
@@ -363,46 +336,25 @@ def submit_daily_quiz(request):
             )
             logger.info(f"[SUBMIT_DAILY_QUIZ] User coins object: created={created}, total_coins={user_coins.total_coins}")
 
-            # If an attempt record exists and was started (but not completed), update it
-            if existing_attempt and existing_attempt.completed_at is None:
-                logger.info(f"[SUBMIT_DAILY_QUIZ] Updating existing attempt record")
-                attempt = existing_attempt
-                # compute coins to add only for correct answers (attempt bonus should already be awarded on start)
-                coins_to_add = coins_from_correct
-                attempt.coins_earned = (attempt.coins_earned or 0) + coins_to_add
-                attempt.answers = answers
-                attempt.correct_count = correct_count
-                attempt.total_questions = total_questions
-                attempt.score_percentage = score_percentage
-                attempt.completed_at = timezone.now()
-                attempt.time_taken_seconds = time_taken
-                attempt.save()
-                logger.info(f"[SUBMIT_DAILY_QUIZ] Attempt record updated. Coins to add: {coins_to_add}")
+            # Always create a new attempt record for multiple attempts per day
+            logger.info(f"[SUBMIT_DAILY_QUIZ] Creating new attempt record")
+            coins_earned = attempt_bonus + coins_from_correct
+            attempt = UserDailyQuizAttempt.objects.create(
+                daily_quiz=daily_quiz,
+                user_id=user_id,
+                answers=answers,
+                correct_count=correct_count,
+                total_questions=total_questions,
+                score_percentage=score_percentage,
+                coins_earned=coins_earned,
+                completed_at=timezone.now(),
+                time_taken_seconds=time_taken,
+            )
+            logger.info(f"[SUBMIT_DAILY_QUIZ] Attempt record created. Total coins to award: {coins_earned}")
 
-                # Award coins for correct answers only
-                if coins_to_add > 0:
-                    logger.info(f"[SUBMIT_DAILY_QUIZ] Adding {coins_to_add} coins for correct answers")
-                    user_coins.add_coins(coins_to_add, reason=f"Daily Quiz correct answers {daily_quiz.date}")
-            else:
-                # No prior start record - award attempt bonus + correct answer coins now
-                logger.info(f"[SUBMIT_DAILY_QUIZ] Creating new attempt record")
-                coins_earned = attempt_bonus + coins_from_correct
-                attempt = UserDailyQuizAttempt.objects.create(
-                    daily_quiz=daily_quiz,
-                    user_id=user_id,
-                    answers=answers,
-                    correct_count=correct_count,
-                    total_questions=total_questions,
-                    score_percentage=score_percentage,
-                    coins_earned=coins_earned,
-                    completed_at=timezone.now(),
-                    time_taken_seconds=time_taken,
-                )
-                logger.info(f"[SUBMIT_DAILY_QUIZ] Attempt record created. Total coins to award: {coins_earned}")
-
-                # Award coins
-                logger.info(f"[SUBMIT_DAILY_QUIZ] Adding {coins_earned} coins (attempt_bonus={attempt_bonus} + correct={coins_from_correct})")
-                user_coins.add_coins(coins_earned, reason=f"Daily Quiz {daily_quiz.date}")
+            # Always award full coins (attempt bonus + correct answers)
+            logger.info(f"[SUBMIT_DAILY_QUIZ] Adding {coins_earned} coins (attempt_bonus={attempt_bonus} + correct={coins_from_correct})")
+            user_coins.add_coins(coins_earned, reason=f"Daily Quiz attempt {daily_quiz.date}")
         
         logger.info(f"[SUBMIT_DAILY_QUIZ] Transaction completed. User total coins: {user_coins.total_coins}")
         
@@ -420,7 +372,7 @@ def submit_daily_quiz(request):
                 'max_possible': max_possible,
             },
             'coin_breakdown': {
-                'attempt_bonus': attempt_bonus if not (existing_attempt and existing_attempt.completed_at is None) else 0,
+                'attempt_bonus': attempt_bonus,  # Always award attempt bonus for each attempt
                 'correct_answers': correct_count,
                 'coins_per_correct': per_correct,
                 'correct_answer_coins': coins_from_correct,
