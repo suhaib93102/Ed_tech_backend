@@ -1,5 +1,6 @@
 """
 Daily Quiz API Views
+# Updated to allow multiple attempts per day - v2
 """
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
