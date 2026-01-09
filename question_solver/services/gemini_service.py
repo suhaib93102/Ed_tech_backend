@@ -25,7 +25,7 @@ class GeminiService:
     def __init__(self):
         # Using gemini-1.5-flash (oldest stable flash model for responses only)
         try:
-            self.model = genai.GenerativeModel('models/gemini-1.5-flash')
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model: {e}")
             self.model = None

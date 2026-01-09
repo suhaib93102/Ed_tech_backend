@@ -1193,7 +1193,7 @@ RULES FOR QUESTIONS:
 - Include expected answer length to guide studying
 """
 
-            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('models/gemini-1.5-flash')
+            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('gemini-1.5-flash')
             try:
                 response = model.generate_content(prompt)
             except Exception as e:
