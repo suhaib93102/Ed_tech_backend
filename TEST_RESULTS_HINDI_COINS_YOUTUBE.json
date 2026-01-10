@@ -1,0 +1,308 @@
+{
+  "test1_hindi_quiz": {
+    "success": true,
+    "quiz_id": "7b318795-0782-4415-bad5-130cb7f9d9a9",
+    "total_questions": 5,
+    "questions": [
+      {
+        "id": 1,
+        "question": "भारत की राष्ट्रीय नदी कौन सी है?",
+        "options": [
+          "यमुना",
+          "ब्रह्मपुत्र",
+          "गंगा",
+          "गोदावरी"
+        ],
+        "category": "भूगोल",
+        "difficulty": "आसान"
+      },
+      {
+        "id": 2,
+        "question": "मानव शरीर में सबसे बड़ी हड्डी कौन सी है?",
+        "options": [
+          "फीमर (जांघ की हड्डी)",
+          "टिबिया (पिंडली की हड्डी)",
+          "रेडियस (अग्रबाहु की हड्डी)",
+          "ह्यूमरस (ऊपरी बांह की हड्डी)"
+        ],
+        "category": "विज्ञान",
+        "difficulty": "आसान"
+      },
+      {
+        "id": 3,
+        "question": "भारत के संविधान को कब अपनाया गया था?",
+        "options": [
+          "26 जनवरी, 1950",
+          "15 अगस्त, 1947",
+          "26 नवंबर, 1949",
+          "2 अक्टूबर, 1869"
+        ],
+        "category": "इतिहास",
+        "difficulty": "मध्यम"
+      },
+      {
+        "id": 4,
+        "question": "विंबलडन किस खेल से जुड़ा हुआ है?",
+        "options": [
+          "क्रिकेट",
+          "फुटबॉल",
+          "टेनिस",
+          "गोल्फ"
+        ],
+        "category": "खेल",
+        "difficulty": "आसान"
+      },
+      {
+        "id": 5,
+        "question": "विश्व स्वास्थ्य संगठन (WHO) का मुख्यालय कहाँ स्थित है?",
+        "options": [
+          "न्यू यॉर्क, संयुक्त राज्य अमेरिका",
+          "जिनेवा, स्विट्जरलैंड",
+          "पेरिस, फ्रांस",
+          "लंदन, यूनाइटेड किंगडम"
+        ],
+        "category": "वर्तमान घटनाएं",
+        "difficulty": "मध्यम"
+      }
+    ]
+  },
+  "test2_coins_before": {
+    "total_coins": 20,
+    "lifetime_coins": 20,
+    "coins_spent": 0
+  },
+  "test3_start_quiz": {
+    "success": false,
+    "error": "400 Client Error: Bad Request for url: http://localhost:8003/api/daily-quiz/start/"
+  },
+  "test4_submit_quiz": {
+    "success": true,
+    "correct_count": 1,
+    "total_questions": 5,
+    "score_percentage": 20.0,
+    "coins_earned": 15,
+    "total_coins_now": 35,
+    "results": [
+      {
+        "question_id": 1,
+        "question": "भारत की राष्ट्रीय नदी कौन सी है?",
+        "options": [
+          {
+            "id": "A",
+            "text": "यमुना"
+          },
+          {
+            "id": "B",
+            "text": "ब्रह्मपुत्र"
+          },
+          {
+            "id": "C",
+            "text": "गंगा"
+          },
+          {
+            "id": "D",
+            "text": "गोदावरी"
+          }
+        ],
+        "user_answer": {
+          "id": "A",
+          "text": "यमुना"
+        },
+        "correct_answer": {
+          "id": "C",
+          "text": "गंगा"
+        },
+        "is_correct": false,
+        "explanation": "गंगा नदी भारत की सबसे महत्वपूर्ण और पवित्र नदियों में से एक है। इसे 2008 में भारत की राष्ट्रीय नदी घोषित किया गया था।",
+        "fun_fact": "गंगा नदी की लंबाई लगभग 2,525 किलोमीटर है और यह हिमालय से बंगाल की खाड़ी तक बहती है।",
+        "category": "भूगोल"
+      },
+      {
+        "question_id": 2,
+        "question": "मानव शरीर में सबसे बड़ी हड्डी कौन सी है?",
+        "options": [
+          {
+            "id": "A",
+            "text": "फीमर (जांघ की हड्डी)"
+          },
+          {
+            "id": "B",
+            "text": "टिबिया (पिंडली की हड्डी)"
+          },
+          {
+            "id": "C",
+            "text": "रेडियस (अग्रबाहु की हड्डी)"
+          },
+          {
+            "id": "D",
+            "text": "ह्यूमरस (ऊपरी बांह की हड्डी)"
+          }
+        ],
+        "user_answer": {
+          "id": "B",
+          "text": "टिबिया (पिंडली की हड्डी)"
+        },
+        "correct_answer": {
+          "id": "A",
+          "text": "फीमर (जांघ की हड्डी)"
+        },
+        "is_correct": false,
+        "explanation": "फीमर, जिसे जांघ की हड्डी भी कहा जाता है, मानव शरीर की सबसे लंबी और सबसे मजबूत हड्डी है। यह कूल्हे से घुटने तक फैली होती है।",
+        "fun_fact": "फीमर हड्डी कंक्रीट से भी मजबूत होती है, क्योंकि यह अपने वजन से 30 गुना ज्यादा वजन सह सकती है।",
+        "category": "विज्ञान"
+      },
+      {
+        "question_id": 3,
+        "question": "भारत के संविधान को कब अपनाया गया था?",
+        "options": [
+          {
+            "id": "A",
+            "text": "26 जनवरी, 1950"
+          },
+          {
+            "id": "B",
+            "text": "15 अगस्त, 1947"
+          },
+          {
+            "id": "C",
+            "text": "26 नवंबर, 1949"
+          },
+          {
+            "id": "D",
+            "text": "2 अक्टूबर, 1869"
+          }
+        ],
+        "user_answer": {
+          "id": "C",
+          "text": "26 नवंबर, 1949"
+        },
+        "correct_answer": {
+          "id": "C",
+          "text": "26 नवंबर, 1949"
+        },
+        "is_correct": true,
+        "explanation": "भारत के संविधान को 26 नवंबर, 1949 को अपनाया गया था, लेकिन यह 26 जनवरी, 1950 को लागू हुआ। 26 जनवरी को गणतंत्र दिवस के रूप में मनाया जाता है।",
+        "fun_fact": "भारतीय संविधान दुनिया का सबसे लंबा लिखित संविधान है।",
+        "category": "इतिहास"
+      },
+      {
+        "question_id": 4,
+        "question": "विंबलडन किस खेल से जुड़ा हुआ है?",
+        "options": [
+          {
+            "id": "A",
+            "text": "क्रिकेट"
+          },
+          {
+            "id": "B",
+            "text": "फुटबॉल"
+          },
+          {
+            "id": "C",
+            "text": "टेनिस"
+          },
+          {
+            "id": "D",
+            "text": "गोल्फ"
+          }
+        ],
+        "user_answer": {
+          "id": "D",
+          "text": "गोल्फ"
+        },
+        "correct_answer": {
+          "id": "C",
+          "text": "टेनिस"
+        },
+        "is_correct": false,
+        "explanation": "विंबलडन टेनिस का एक प्रतिष्ठित टूर्नामेंट है, जो हर साल लंदन, इंग्लैंड में आयोजित किया जाता है। यह दुनिया के चार ग्रैंड स्लैम टूर्नामेंटों में से एक है।",
+        "fun_fact": "विंबलडन दुनिया का सबसे पुराना टेनिस टूर्नामेंट है, जिसकी शुरुआत 1877 में हुई थी।",
+        "category": "खेल"
+      },
+      {
+        "question_id": 5,
+        "question": "विश्व स्वास्थ्य संगठन (WHO) का मुख्यालय कहाँ स्थित है?",
+        "options": [
+          {
+            "id": "A",
+            "text": "न्यू यॉर्क, संयुक्त राज्य अमेरिका"
+          },
+          {
+            "id": "B",
+            "text": "जिनेवा, स्विट्जरलैंड"
+          },
+          {
+            "id": "C",
+            "text": "पेरिस, फ्रांस"
+          },
+          {
+            "id": "D",
+            "text": "लंदन, यूनाइटेड किंगडम"
+          }
+        ],
+        "user_answer": {
+          "id": "A",
+          "text": "न्यू यॉर्क, संयुक्त राज्य अमेरिका"
+        },
+        "correct_answer": {
+          "id": "B",
+          "text": "जिनेवा, स्विट्जरलैंड"
+        },
+        "is_correct": false,
+        "explanation": "विश्व स्वास्थ्य संगठन (WHO) का मुख्यालय जिनेवा, स्विट्जरलैंड में स्थित है। यह संयुक्त राष्ट्र की एक विशेष एजेंसी है जो अंतर्राष्ट्रीय सार्वजनिक स्वास्थ्य से संबंधित है।",
+        "fun_fact": "WHO की स्थापना 7 अप्रैल, 1948 को हुई थी, और हर साल 7 अप्रैल को विश्व स्वास्थ्य दिवस मनाया जाता है।",
+        "category": "वर्तमान घटनाएं"
+      }
+    ]
+  },
+  "test5_coins_after": {
+    "total_coins": 35,
+    "lifetime_coins": 35,
+    "coins_spent": 0
+  },
+  "test6_history": {
+    "success": true,
+    "history": [
+      {
+        "date": "2026-01-10",
+        "quiz_title": "Daily GK Quiz - January 10, 2026",
+        "correct_count": 1,
+        "total_questions": 5,
+        "score_percentage": 20.0,
+        "coins_earned": 15,
+        "completed_at": "2026-01-10T09:51:47.745608Z"
+      },
+      {
+        "date": "2026-01-10",
+        "quiz_title": "Daily GK Quiz - January 10, 2026",
+        "correct_count": 1,
+        "total_questions": 5,
+        "score_percentage": 20.0,
+        "coins_earned": 15,
+        "completed_at": "2026-01-10T09:50:14.007618Z"
+      },
+      {
+        "date": "2026-01-10",
+        "quiz_title": "Daily GK Quiz - January 10, 2026",
+        "correct_count": 0,
+        "total_questions": 10,
+        "score_percentage": 0.0,
+        "coins_earned": 5,
+        "completed_at": null
+      }
+    ],
+    "stats": {
+      "total_attempts": 3,
+      "total_coins_earned": 35,
+      "average_score": 13.33
+    }
+  },
+  "test7_youtube": {
+    "success": true,
+    "summary_length": 23540,
+    "has_timestamps": true,
+    "timestamp_count": 224,
+    "section_count": 14,
+    "summary_preview": "Okay, I will provide a comprehensive summary of the provided \"Tarak Mehta Ka Ooltah Chashmah\" episode transcript, including timestamps, key points, and all the required information. This will be extensive.\n\n# EXTREMELY DETAILED VIDEO SUMMARY\n\n## 1. EXECUTIVE SUMMARY\n\nThis video is an episode of the popular Indian sitcom \"Tarak Mehta Ka Ooltah Chashmah\" focused on the Tappu Sena's plan to secretly learn how to ride a scooter. The episode centers around their elaborate schemes to acquire a scooter (Sakhram, owned by Bhide) and create alibis to deceive their parents.\n\n## 2. VIDEO TIMELINE & KEY SECTIONS WITH TIMESTAMPS\n\n*   **[00:00 - 01:44] The Missing Key:**\n    *   **[00:00] Start**: Introduction shows Madhavi and Bhide frantically searching for Sakhram's key.\n    *   **[00:10]** Bhide expresses his frustration.\n    *   **[00:23]** Madhavi states that Bhide lost the key before.\n    *   **[00:57]** Bhide panics about Bhide Uncle (Tapu Sena's nickname for Bhide).\n    *   **[01:15]** Bhid"
+  }
+}

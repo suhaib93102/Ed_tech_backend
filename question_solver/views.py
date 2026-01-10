@@ -494,45 +494,62 @@ class FlashcardGeneratorView(APIView):
         Generate flashcards based on topic or document
         
         Request body:
-        - topic: Topic text or document content
-        - num_cards: Number of flashcards (default: 10)
+        - topic: Topic text (for text-based generation)
+        - num_cards: Number of flashcards (default: 10, max: 50)
+        - language: 'english' or 'hindi' (default: 'english')
         - document: Optional document file upload (.txt, .pdf, .jpg, .png)
         """
         try:
-            # Get parameters
-            topic = request.data.get('topic', '')
-            num_cards = int(request.data.get('num_cards', 10))
+            # Get and validate parameters
+            topic = request.data.get('topic', '').strip()
+            language = request.data.get('language', 'english').lower()
+            
+            # Validate language parameter
+            if language not in ['english', 'hindi']:
+                language = 'english'
+            
+            # Validate num_cards
+            try:
+                num_cards = int(request.data.get('num_cards', 10))
+                num_cards = max(1, min(num_cards, 50))  # 1-50 range
+            except (ValueError, TypeError):
+                num_cards = 10
+            
+            logger.info(f"[FLASHCARD] Request: topic_length={len(topic)}, num_cards={num_cards}, lang={language}")
             
             # Handle document upload
             if 'document' in request.FILES:
-                document_file = request.FILES['document']
-                # Save temporarily
-                file_name = default_storage.save(f'temp/{document_file.name}', 
-                                                ContentFile(document_file.read()))
-                file_path = default_storage.path(file_name)
-                
+                logger.info("[FLASHCARD] Processing document for flashcards")
                 try:
+                    document_file = request.FILES['document']
+                    file_name = default_storage.save(f'temp/{document_file.name}', 
+                                                    ContentFile(document_file.read()))
+                    file_path = default_storage.path(file_name)
+                    
                     # Extract text from document (using OCR for images, or read text files)
-                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
-                        logger.info(f"Processing image file: {document_file.name}")
+                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')):
+                        logger.info(f"[FLASHCARD] Processing image file: {document_file.name}")
                         ocr_result = ocr_service.extract_text_from_image(file_path)
-                        if ocr_result['success'] and ocr_result.get('text', '').strip():
-                            topic = ocr_result['text'].strip()
-                            logger.info(f"OCR successful: extracted {len(topic)} characters")
+                        if ocr_result.get('success') and ocr_result.get('text', '').strip():
+                            topic = ocr_result.get('text', '').strip()
+                            logger.info(f"[FLASHCARD] OCR successful: extracted {len(topic)} characters")
                         else:
-                            logger.warning(f"OCR failed for {document_file.name}: {ocr_result.get('error', 'Unknown error')}")
+                            logger.warning(f"[FLASHCARD] OCR failed for {document_file.name}: {ocr_result.get('error', 'Unknown error')}")
                             return Response({
-                                'error': 'Could not extract readable text from the image',
-                                'details': 'Please ensure the image contains clear, readable text and try again. Supported formats: PNG, JPG, JPEG',
-                                'ocr_details': {
-                                    'success': ocr_result.get('success', False),
-                                    'confidence': ocr_result.get('confidence', 0),
-                                    'error': ocr_result.get('error', 'Unknown OCR error')
-                                }
+                                'success': False,
+                                'error': 'Failed to extract text from image',
+                                'message': 'Please ensure the image contains clear, readable text and try again',
+                                'supported_formats': ['.png', '.jpg', '.jpeg', '.gif'],
+                                'details': ocr_result.get('error', 'OCR processing failed')
                             }, status=status.HTTP_400_BAD_REQUEST)
                     elif document_file.name.lower().endswith('.txt'):
-                        with open(file_path, 'r', encoding='utf-8') as f:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                             topic = f.read()
+                        logger.info(f"[FLASHCARD] Extracted {len(topic)} chars from text file")
+                    elif document_file.name.lower().endswith('.md'):
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            topic = f.read()
+                        logger.info(f"[FLASHCARD] Extracted {len(topic)} chars from markdown file")
                     elif document_file.name.lower().endswith('.pdf'):
                         # Extract text from PDF
                         try:
@@ -542,43 +559,122 @@ class FlashcardGeneratorView(APIView):
                                 topic = ""
                                 for page in pdf_reader.pages:
                                     topic += page.extract_text() + "\n"
+                            logger.info(f"[FLASHCARD] Extracted {len(topic)} chars from PDF")
                         except ImportError:
+                            logger.error("[FLASHCARD] PyPDF2 not installed")
                             return Response({
-                                'error': 'PDF support requires PyPDF2. Please install it.',
-                                'details': 'pip install PyPDF2'
+                                'success': False,
+                                'error': 'PDF support requires PyPDF2',
+                                'details': 'Install with: pip install PyPDF2'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        except Exception as pdf_error:
+                            logger.error(f"[FLASHCARD] PDF extraction error: {pdf_error}")
+                            return Response({
+                                'success': False,
+                                'error': 'Failed to extract text from PDF',
+                                'message': 'Please ensure the PDF contains readable text',
+                                'details': str(pdf_error)
                             }, status=status.HTTP_400_BAD_REQUEST)
                     else:
+                        logger.warning(f"[FLASHCARD] Unsupported file format: {document_file.name}")
                         return Response({
-                            'error': 'Unsupported file format. Please use .txt, .pdf, .png, .jpg, or .jpeg'
+                            'success': False,
+                            'error': f'Unsupported document type: {document_file.name}',
+                            'supported_formats': ['.txt', '.md', '.pdf', '.jpg', '.jpeg', '.png', '.gif']
                         }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    if not topic or not topic.strip():
+                        logger.warning("[FLASHCARD] Document extracted but is empty")
+                        return Response({
+                            'success': False,
+                            'error': 'Could not extract text from document',
+                            'message': 'Please ensure the document contains readable text'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                except Exception as file_error:
+                    logger.error(f"[FLASHCARD] File processing error: {file_error}", exc_info=True)
+                    return Response({
+                        'success': False,
+                        'error': 'Failed to process document',
+                        'details': str(file_error)
+                    }, status=status.HTTP_400_BAD_REQUEST)
                 finally:
                     # Clean up temp file
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        default_storage.delete(file_name)
+                    except Exception as cleanup_error:
+                        logger.warning(f"[FLASHCARD] Cleanup error: {cleanup_error}")
             
-            if not topic or not topic.strip():
+            elif not topic:
+                logger.warning("[FLASHCARD] Missing topic and no document provided")
                 return Response({
-                    'error': 'Please provide a topic or upload a document'
+                    'success': False,
+                    'error': 'Please provide a topic or upload a document',
+                    'message': 'Submit text in the topic field or upload a document file (.txt, .pdf, .jpg)',
+                    'example_topic': 'Indian Constitutional Law',
+                    'supported_formats': ['.txt', '.md', '.pdf', '.jpg', '.jpeg', '.png', '.gif']
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Generate flashcards using Gemini
-            logger.info(f"Generating {num_cards} flashcards")
-            result = gemini_service.generate_flashcards(topic, num_cards)
+            # Generate flashcards using Gemini with language support
+            logger.info(f"[FLASHCARD] Generating {num_cards} flashcards in {language}")
+            
+            try:
+                # Pass language to Gemini service
+                result = gemini_service.generate_flashcards(topic, num_cards, language=language)
+                logger.info(f"[FLASHCARD] Gemini API responded successfully")
+            except Exception as e:
+                # Handle quota exceeded specifically
+                try:
+                    from google.api_core.exceptions import ResourceExhausted
+                except Exception:
+                    ResourceExhausted = None
+
+                if ResourceExhausted and isinstance(e, ResourceExhausted):
+                    retry_seconds = None
+                    m = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)', str(e))
+                    retry_seconds = int(m.group(1)) if m else 60
+
+                    headers = {'Retry-After': str(retry_seconds)}
+                    logger.warning(f"[FLASHCARD] Quota exceeded for Gemini API: retry in {retry_seconds}s")
+                    return Response({
+                        'success': False,
+                        'error': 'AI service quota exceeded',
+                        'details': f'Please retry after {retry_seconds} seconds',
+                        'retry_after': retry_seconds
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS, headers=headers)
+
+                logger.error(f"[FLASHCARD] Gemini API error: {e}", exc_info=True)
+                return Response({
+                    'success': False,
+                    'error': 'Failed to generate flashcards',
+                    'details': str(e),
+                    'suggestion': 'Check your AI service API key and quota'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             if result.get('success'):
-                return Response(result.get('flashcards'), status=status.HTTP_200_OK)
+                # Ensure response includes language field
+                response_data = result.get('data', result.get('flashcards', {}))
+                if isinstance(response_data, dict):
+                    response_data['language'] = language
+                return Response({
+                    'success': True,
+                    'data': response_data
+                }, status=status.HTTP_200_OK)
             else:
                 if result.get('error') == 'quota_exceeded':
-                    retry_seconds = result.get('retry_after_seconds')
-                    headers = {}
-                    if retry_seconds:
-                        headers['Retry-After'] = str(retry_seconds)
+                    retry_seconds = result.get('retry_after_seconds', 60)
+                    headers = {'Retry-After': str(retry_seconds)}
                     return Response({
-                        'error': 'Quota exceeded for AI service',
-                        'details': result.get('details', '')
+                        'success': False,
+                        'error': 'AI service quota exceeded',
+                        'details': result.get('details', ''),
+                        'retry_after': retry_seconds
                     }, status=status.HTTP_429_TOO_MANY_REQUESTS, headers=headers)
 
                 return Response({
+                    'success': False,
                     'error': result.get('error', 'Failed to generate flashcards'),
                     'details': result.get('details', '')
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1063,68 +1159,116 @@ class PredictedQuestionsView(APIView):
         Request body:
         - topic: Topic/subject name (for text-based generation)
         - document: Document file (for document-based generation)
-        - exam_type: Type of exam (General, JEE, NEET, etc.)
-        - num_questions: Number of questions (default: 5)
+        - exam_type: Type of exam (default: General)
+        - num_questions: Number of questions (default: 5, max: 20)
+        - language: 'english' or 'hindi' (default: 'english')
         """
         try:
+            # Get and validate parameters
             topic = request.data.get('topic', '').strip()
             exam_type = request.data.get('exam_type', 'General')
-            num_questions = int(request.data.get('num_questions', 5))
+            language = request.data.get('language', 'english').lower()
             document = None
+            
+            # Validate language parameter
+            if language not in ['english', 'hindi']:
+                language = 'english'
+            
+            # Validate num_questions
+            try:
+                num_questions = int(request.data.get('num_questions', 5))
+                num_questions = max(1, min(num_questions, 20))  # 1-20 range
+            except (ValueError, TypeError):
+                num_questions = 5
+            
+            logger.info(f"[PREDICTED_Q] Request: topic_length={len(topic)}, exam={exam_type}, num_q={num_questions}, lang={language}")
             
             # Get content from either topic or document
             if 'document' in request.FILES:
-                logger.info("Processing document for predicted questions")
-                document_file = request.FILES['document']
-                file_name = default_storage.save(f'temp/{document_file.name}', ContentFile(document_file.read()))
-                file_path = default_storage.path(file_name)
-                
-                # Extract text from document
-                if document_file.name.lower().endswith(('.txt', '.md')):
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        document = f.read()
-                    logger.info(f"Extracted {len(document)} characters from text file")
-                elif document_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                    # Use OCR for images
-                    ocr_result = ocr_service.extract_text_from_image(file_path)
-                    if ocr_result['success']:
-                        document = ocr_result['text']
-                        logger.info(f"Extracted {len(document)} characters from image via OCR")
+                logger.info("[PREDICTED_Q] Processing document for predicted questions")
+                try:
+                    document_file = request.FILES['document']
+                    file_name = default_storage.save(f'temp/{document_file.name}', ContentFile(document_file.read()))
+                    file_path = default_storage.path(file_name)
+                    
+                    # Extract text from document
+                    if document_file.name.lower().endswith(('.txt', '.md')):
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            document = f.read()
+                        logger.info(f"[PREDICTED_Q] Extracted {len(document)} chars from text")
+                    elif document_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                        # Use OCR for images
+                        logger.info("[PREDICTED_Q] Processing image with OCR")
+                        ocr_result = ocr_service.extract_text_from_image(file_path)
+                        if ocr_result.get('success'):
+                            document = ocr_result.get('text', '')
+                            logger.info(f"[PREDICTED_Q] OCR successful: {len(document)} chars")
+                        else:
+                            logger.warning(f"[PREDICTED_Q] OCR failed: {ocr_result.get('error')}")
+                            return Response({
+                                'success': False,
+                                'error': 'Failed to extract text from image',
+                                'details': ocr_result.get('error', 'OCR processing failed')
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                    elif document_file.name.lower().endswith('.pdf'):
+                        # Try to extract text from PDF
+                        try:
+                            import PyPDF2
+                            with open(file_path, 'rb') as f:
+                                reader = PyPDF2.PdfReader(f)
+                                document = ' '.join([page.extract_text() for page in reader.pages])
+                            logger.info(f"[PREDICTED_Q] Extracted {len(document)} chars from PDF")
+                        except ImportError:
+                            logger.error("[PREDICTED_Q] PyPDF2 not installed")
+                            return Response({
+                                'success': False,
+                                'error': 'PDF support requires PyPDF2',
+                                'details': 'Install with: pip install PyPDF2'
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                        except Exception as pdf_error:
+                            logger.warning(f"[PREDICTED_Q] PDF extraction failed: {pdf_error}")
+                            document = None
                     else:
                         return Response({
-                            'error': 'Failed to extract text from image'
+                            'success': False,
+                            'error': f'Unsupported document type: {document_file.name}',
+                            'supported_formats': ['.txt', '.md', '.pdf', '.jpg', '.jpeg', '.png']
                         }, status=status.HTTP_400_BAD_REQUEST)
-                elif document_file.name.lower().endswith('.pdf'):
-                    # Try to extract text from PDF
+                    
+                    # Clean up temp file
                     try:
-                        import PyPDF2
-                        with open(file_path, 'rb') as f:
-                            reader = PyPDF2.PdfReader(f)
-                            document = ' '.join([page.extract_text() for page in reader.pages])
-                        logger.info(f"Extracted {len(document)} characters from PDF")
-                    except Exception as e:
-                        logger.warning(f"PDF extraction failed, using filename as topic: {e}")
-                        document = None
-                else:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        default_storage.delete(file_name)
+                    except Exception as cleanup_error:
+                        logger.warning(f"[PREDICTED_Q] Cleanup error: {cleanup_error}")
+                    
+                    if not document or not document.strip():
+                        return Response({
+                            'success': False,
+                            'error': 'Could not extract text from document',
+                            'message': 'Please ensure the document contains readable text'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    topic = document[:500]  # Use first 500 chars as topic label
+                    logger.info(f"[PREDICTED_Q] Document processed, topic set to first 500 chars")
+                    
+                except Exception as file_error:
+                    logger.error(f"[PREDICTED_Q] File processing error: {file_error}", exc_info=True)
                     return Response({
-                        'error': f'Unsupported document type: {document_file.name}'
+                        'success': False,
+                        'error': 'Failed to process document',
+                        'details': str(file_error)
                     }, status=status.HTTP_400_BAD_REQUEST)
-                
-                # Clean up temp file
-                try:
-                    default_storage.delete(file_name)
-                except:
-                    pass
-                
-                if not document:
-                    return Response({
-                        'error': 'Could not extract text from document'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                topic = document[:500]  # Use first 500 chars as topic label
+                    
             elif not topic:
+                logger.warning("[PREDICTED_Q] Missing topic and no document provided")
                 return Response({
-                    'error': 'Please provide either a topic or document'
+                    'success': False,
+                    'error': 'Please provide either a topic or document',
+                    'message': 'Submit text in the topic field or upload a document file (.txt, .pdf, .jpg)',
+                    'example_topic': 'Indian Constitutional Law',
+                    'supported_formats': ['.txt', '.md', '.pdf', '.jpg', '.jpeg', '.png']
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # Prepare content for Gemini
@@ -1202,8 +1346,12 @@ RULES FOR QUESTIONS:
 """
 
             model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('models/gemini-2.0-flash')
+            
+            # Generate questions with error handling
             try:
+                logger.info(f"[PREDICTED_Q] Calling Gemini API for {num_questions} questions (language: {language})")
                 response = model.generate_content(prompt)
+                logger.info(f"[PREDICTED_Q] Gemini API responded successfully")
             except Exception as e:
                 # Handle quota exceeded specifically
                 try:
@@ -1212,59 +1360,89 @@ RULES FOR QUESTIONS:
                     ResourceExhausted = None
 
                 if ResourceExhausted and isinstance(e, ResourceExhausted):
-                    import re
                     retry_seconds = None
                     m = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)', str(e))
-                    retry_seconds = int(m.group(1)) if m else None
+                    retry_seconds = int(m.group(1)) if m else 60
 
-                    headers = {}
-                    if retry_seconds:
-                        headers['Retry-After'] = str(retry_seconds)
-                    logger.warning(f"Quota exceeded for Gemini API (predicted questions): retry in {retry_seconds}s")
-                    return Response({ 'error': 'Quota exceeded for AI service', 'details': str(e) }, status=status.HTTP_429_TOO_MANY_REQUESTS, headers=headers)
+                    headers = {'Retry-After': str(retry_seconds)}
+                    logger.warning(f"[PREDICTED_Q] Quota exceeded for Gemini API: retry in {retry_seconds}s")
+                    return Response({
+                        'success': False,
+                        'error': 'AI service quota exceeded',
+                        'details': f'Please retry after {retry_seconds} seconds',
+                        'retry_after': retry_seconds
+                    }, status=status.HTTP_429_TOO_MANY_REQUESTS, headers=headers)
 
-                logger.error(f"Predicted questions generation error: {e}", exc_info=True)
-                return Response({ 'error': 'Failed to generate predicted questions', 'details': str(e) }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            if not response.text:
-                logger.error("Empty response from Gemini API")
+                logger.error(f"[PREDICTED_Q] Gemini API error: {e}", exc_info=True)
                 return Response({
-                    'error': 'Failed to generate questions'
+                    'success': False,
+                    'error': 'Failed to generate predicted questions',
+                    'details': str(e),
+                    'suggestion': 'Check your AI service API key and quota'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Validate response
+            if not response or not response.text:
+                logger.error("[PREDICTED_Q] Empty response from Gemini API")
+                return Response({
+                    'success': False,
+                    'error': 'AI service returned empty response',
+                    'message': 'Please try again with a different topic'
                 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Parse response with robust cleanup
             response_text = response.text.strip()
+            logger.info(f"[PREDICTED_Q] Response received: {len(response_text)} chars")
             
             # Remove markdown code fences
             if response_text.startswith('```'):
                 response_text = response_text.split('```')[1]
+                logger.info("[PREDICTED_Q] Removed markdown code fence (start)")
             if response_text.startswith('json'):
                 response_text = response_text[4:].lstrip()
+                logger.info("[PREDICTED_Q] Removed 'json' prefix")
             if response_text.endswith('```'):
                 response_text = response_text[:-3].rstrip()
+                logger.info("[PREDICTED_Q] Removed markdown code fence (end)")
             
             # Try direct parsing first
+            questions_data = None
             try:
                 questions_data = json.loads(response_text)
+                logger.info(f"[PREDICTED_Q] JSON parsing successful (direct)")
             except json.JSONDecodeError as e:
-                logger.warning(f"Direct JSON parse failed: {e}")
+                logger.warning(f"[PREDICTED_Q] Direct JSON parse failed: {e}")
                 
                 # Try extracting JSON object
                 json_match = re.search(r'\{[\s\S]*\}', response_text)
                 if json_match:
                     json_text = json_match.group()
+                    logger.info(f"[PREDICTED_Q] Found JSON object: {len(json_text)} chars")
                     
                     # Fix common JSON issues: newlines in strings, unescaped quotes
                     json_text = json_text.replace('\n', '\\n').replace('\r', '\\r')
                     
                     try:
                         questions_data = json.loads(json_text)
+                        logger.info(f"[PREDICTED_Q] JSON parsing successful (after extraction)")
                     except json.JSONDecodeError as e2:
-                        logger.error(f"JSON extraction failed: {e2}")
-                        logger.error(f"Problematic text (first 500 chars): {json_text[:500]}")
-                        raise ValueError(f"Could not parse Gemini response: {e2}")
+                        logger.error(f"[PREDICTED_Q] JSON extraction failed: {e2}")
+                        logger.error(f"[PREDICTED_Q] Problematic text (first 500 chars): {json_text[:500]}")
+                        return Response({
+                            'success': False,
+                            'error': 'Failed to parse AI response',
+                            'details': f'JSON parsing error: {str(e2)}',
+                            'message': 'The AI response could not be parsed. Please try with a different topic.'
+                        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 else:
-                    raise ValueError("No JSON object found in response")
+                    logger.error(f"[PREDICTED_Q] No JSON object found in response")
+                    logger.error(f"[PREDICTED_Q] Response preview: {response_text[:300]}")
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid AI response format',
+                        'details': 'Could not find JSON in the response',
+                        'message': 'The AI service did not return valid data. Please try again.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Ensure all expected fields are present with fallback values
             if not questions_data.get('key_definitions'):

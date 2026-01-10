@@ -126,21 +126,28 @@ Rules:
                 'details': str(e)
             }
     
-    def generate_flashcards(self, topic: str, num_cards: int = 10) -> Dict[str, Any]:
+    def generate_flashcards(self, topic: str, num_cards: int = 10, language: str = 'english') -> Dict[str, Any]:
         """
         Generate concise, high-quality flashcards from topic or text content
 
         Args:
             topic: The topic or text content to generate flashcards from
             num_cards: Number of flashcards to generate (default: 10)
+            language: Language for flashcards - 'english' or 'hindi' (default: 'english')
 
         Returns:
             Dictionary containing flashcard data
         """
         try:
+            # Language-specific instruction
+            if language.lower() == 'hindi':
+                lang_instruction = "in Hindi language (देवनागरी script). All content must be in Hindi."
+            else:
+                lang_instruction = "in English language"
+            
             prompt = f"""You are an AI flashcard generator for an EdTech platform.
 
-Generate {num_cards} concise, high-quality flashcards from the following input:
+Generate {num_cards} concise, high-quality flashcards {lang_instruction} from the following input:
 
 INPUT CONTENT:
 {topic}
@@ -157,6 +164,7 @@ Return ONLY valid JSON in this format:
 {{
     "title": "Flashcard Set - [Topic Summary]",
     "topic": "{topic[:100]}...",
+    "language": "{language.lower()}",
     "total_cards": {num_cards},
     "cards": [
         {{
@@ -175,9 +183,10 @@ IMPORTANT:
 - Answers should be comprehensive but concise
 - Ensure variety in question types and concepts covered
 - All flashcards must be unique and non-redundant
+- All text must be in {lang_instruction}
 """
 
-            logger.info(f"Generating {num_cards} conceptual flashcards for topic: {topic[:100]}...")
+            logger.info(f"Generating {num_cards} conceptual flashcards for topic: {topic[:100]}... (language: {language})")
             response = self.model.generate_content(prompt)
 
             # Extract JSON from response
@@ -195,6 +204,9 @@ IMPORTANT:
             if 'cards' not in flashcard_data:
                 raise ValueError("Missing 'cards' field in response")
 
+            # Ensure language field is set
+            flashcard_data['language'] = language.lower()
+            
             # Ensure each card has required fields with defaults
             for i, card in enumerate(flashcard_data['cards']):
                 card['id'] = card.get('id', i + 1)
@@ -413,18 +425,53 @@ Document Text:
                 'details': str(e)
             }
     
-    def generate_daily_quiz(self, num_questions: int = 10) -> Dict[str, Any]:
+    def generate_daily_quiz(self, num_questions: int = 10, language: str = 'english') -> Dict[str, Any]:
         """
-        Generate a daily general knowledge quiz with varied categories
+        Generate a daily general knowledge quiz with language support
         
         Args:
             num_questions: Number of questions to generate (default: 10)
+            language: 'english' or 'hindi' (default: 'english')
         
         Returns:
             Dictionary containing quiz questions with varied categories
         """
         try:
-            prompt = f"""Generate a daily general knowledge quiz with {num_questions} multiple-choice questions covering various categories like Science, History, Geography, Literature, Current Events, Sports, Technology, etc.
+            if language.lower() == 'hindi':
+                prompt = f"""आप एक दैनिक सामान्य ज्ञान प्रश्नोत्तरी बनाएं जिसमें {num_questions} बहुविकल्पीय प्रश्न हों। सभी प्रश्न, विकल्प, व्याख्या और मजेदार तथ्य हिंदी भाषा में (देवनागरी लिपि में) हों।
+
+विभिन्न श्रेणियों को कवर करें: विज्ञान, इतिहास, भूगोल, साहित्य, वर्तमान घटनाएं, खेल, प्रौद्योगिकी आदि।
+
+प्रश्न दिलचस्प, शैक्षणिक और सामान्य दर्शकों के लिए उपयुक्त हों। आसान और मध्यम कठिनाई के प्रश्नों को मिलाएं।
+
+कृपया प्रतिक्रिया को निम्नलिखित JSON संरचना में प्रारूपित करें:
+{{
+    "questions": [
+        {{
+            "question_text": "प्रश्न का पाठ यहाँ?",
+            "options": [
+                {{"id": "A", "text": "विकल्प A"}},
+                {{"id": "B", "text": "विकल्प B"}},
+                {{"id": "C", "text": "विकल्प C"}},
+                {{"id": "D", "text": "विकल्प D"}}
+            ],
+            "correct_answer": "C",
+            "category": "विज्ञान",
+            "difficulty": "मध्यम",
+            "explanation": "व्याख्या हिंदी में",
+            "fun_fact": "मजेदार तथ्य हिंदी में"
+        }}
+    ]
+}}
+
+नियम:
+- सभी सामग्री हिंदी (देवनागरी) में होनी चाहिए
+- प्रश्न स्पष्ट और आकर्षक हों
+- विभिन्न श्रेणियों का उपयोग करें
+- कठिनाई को मिलाएं (ज्यादातर आसान और मध्यम)
+"""
+            else:
+                prompt = f"""Generate a daily general knowledge quiz with {num_questions} multiple-choice questions covering various categories like Science, History, Geography, Literature, Current Events, Sports, Technology, etc.
 
 Make the questions interesting, educational, and suitable for a general audience. Mix easy and medium difficulty questions.
 

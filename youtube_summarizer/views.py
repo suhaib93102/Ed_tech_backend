@@ -76,8 +76,12 @@ class YouTubeSummarizerView(APIView):
             
             # Get video details if available
             video_details = youtube_service.get_video_details(video_id)
-            video_title = video_details.get('snippet', {}).get('title', 'Unknown Title') if video_details else 'Unknown Title'
-            video_channel = video_details.get('snippet', {}).get('channelTitle', 'Unknown Channel') if video_details else 'Unknown Channel'
+            if video_details:
+                video_title = video_details.get('snippet', {}).get('title', 'Unknown Title')
+                video_channel = video_details.get('snippet', {}).get('channelTitle', 'Unknown Channel')
+            else:
+                video_title = 'Unknown Title'
+                video_channel = 'Unknown Channel'
             
             return Response({
                 'success': True,

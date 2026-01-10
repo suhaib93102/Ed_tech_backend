@@ -19,7 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def create_or_get_daily_quiz():
+def create_or_get_daily_quiz(language='english'):
     """
     Auto-generate today's Daily Quiz using Gemini if it doesn't exist
     """
@@ -29,11 +29,11 @@ def create_or_get_daily_quiz():
     if daily_quiz:
         return daily_quiz
     
-    # Generate new quiz using Gemini
-    logger.info(f"Generating new Daily Quiz for {today}")
+    # Generate new quiz using Gemini with language support
+    logger.info(f"Generating new Daily Quiz for {today} in {language} language")
     
     try:
-        result = gemini_service.generate_daily_quiz(num_questions=5)
+        result = gemini_service.generate_daily_quiz(num_questions=5, language=language)
         
         if not result.get('success'):
             logger.error(f"Failed to generate Daily Quiz: {result.get('error')}")
@@ -85,6 +85,7 @@ def get_daily_quiz(request):
     Format matches strict JSON requirements for daily_coin_quiz
     """
     user_id = request.query_params.get('user_id', 'anonymous')
+    language = request.query_params.get('language', 'english').lower()
     today = date.today()
     
     try:
@@ -92,7 +93,7 @@ def get_daily_quiz(request):
         settings = QuizSettings.get_settings()
         
         # Auto-generate quiz if it doesn't exist (ensure 10 questions)
-        daily_quiz = create_or_get_daily_quiz()
+        daily_quiz = create_or_get_daily_quiz(language=language)
         
         if not daily_quiz:
             return Response({

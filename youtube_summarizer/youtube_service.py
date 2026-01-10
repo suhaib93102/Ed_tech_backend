@@ -91,47 +91,70 @@ class YouTubeService:
             
             # Try to fetch transcript (preferring English)
             try:
-                transcript = api.fetch(video_id, languages=['en'])
-                logger.info(f"Successfully fetched English transcript for {video_id}")
+                transcript_data = api.fetch(video_id)
+                logger.info(f"Successfully fetched transcript for {video_id}")
+                # Convert to dict format
+                transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration} 
+                             for item in transcript_data]
                 return {
                     'success': True,
-                    'transcript': [{'text': item.text, 'start': item.start, 'duration': item.duration} 
-                                   for item in transcript],
+                    'transcript': transcript,
                     'language': 'en'
                 }
             except NoTranscriptFound:
-                # If English transcript not found, try to get available transcripts
+                # If English transcript not found, try to list available ones
                 logger.warning(f"English transcript not found for {video_id}, trying other languages")
                 try:
                     transcript_list = api.list(video_id)
                     
-                    # Try generated transcripts first
-                    if hasattr(transcript_list, 'generated_transcripts') and transcript_list.generated_transcripts:
-                        transcript = transcript_list.generated_transcripts[0].fetch()
-                        language = transcript_list.generated_transcripts[0].language
-                        logger.info(f"Fetched auto-generated {language} transcript for {video_id}")
+                    # Try to find Hindi transcript first
+                    transcripts_to_try = [
+                        ('hi', 'Hindi'),
+                        ('en', 'English'),
+                        ('es', 'Spanish'),
+                        ('fr', 'French'),
+                    ]
+                    
+                    found_transcript = None
+                    found_lang = None
+                    found_lang_name = None
+                    
+                    for lang_code, lang_name in transcripts_to_try:
+                        try:
+                            found_transcript = transcript_list.find_generated_transcript([lang_code])
+                            found_lang = lang_code
+                            found_lang_name = lang_name
+                            logger.info(f"Found auto-generated {lang_name} ({lang_code}) transcript")
+                            break
+                        except:
+                            try:
+                                found_transcript = transcript_list.find_manually_created_transcript([lang_code])
+                                found_lang = lang_code
+                                found_lang_name = lang_name
+                                logger.info(f"Found manually created {lang_name} ({lang_code}) transcript")
+                                break
+                            except:
+                                continue
+                    
+                    if found_transcript:
+                        transcript_data = found_transcript.fetch()
+                        transcript = [{'text': item.text, 'start': item.start, 'duration': item.duration} 
+                                     for item in transcript_data]
+                        logger.info(f"Fetched {found_lang_name} transcript with {len(transcript)} segments")
                         return {
                             'success': True,
-                            'transcript': [{'text': item.text, 'start': item.start, 'duration': item.duration} 
-                                           for item in transcript],
-                            'language': language
+                            'transcript': transcript,
+                            'language': found_lang
                         }
-                    elif hasattr(transcript_list, 'manually_created_transcripts') and transcript_list.manually_created_transcripts:
-                        transcript = transcript_list.manually_created_transcripts[0].fetch()
-                        language = transcript_list.manually_created_transcripts[0].language
-                        logger.info(f"Fetched {language} transcript for {video_id}")
-                        return {
-                            'success': True,
-                            'transcript': [{'text': item.text, 'start': item.start, 'duration': item.duration} 
-                                           for item in transcript],
-                            'language': language
-                        }
+                    else:
+                        raise Exception("No suitable transcript found")
+                        
                 except Exception as e:
                     logger.error(f"No transcripts available for {video_id}: {str(e)}")
                     return {
                         'success': False,
                         'error': 'No transcripts available for this video',
-                        'details': 'The video does not have captions/subtitles enabled'
+                        'details': 'The video does not have captions/subtitles enabled or they are disabled'
                     }
             
         except TranscriptsDisabled:
@@ -151,59 +174,163 @@ class YouTubeService:
 
     def summarize_transcript(self, transcript_list):
         """
-        Summarize transcript using Gemini AI
+        Summarize transcript using Gemini AI with timestamps and deep analysis
         """
         try:
-            from .services.gemini_service import gemini_service
+            import sys
+            import os
+            from question_solver.services.gemini_service import gemini_service
+            import datetime
+            
+            # Build transcript with timestamps
+            transcript_with_timestamps = []
+            for item in transcript_list:
+                start_time = item.get('start', 0)
+                minutes = int(start_time) // 60
+                seconds = int(start_time) % 60
+                timestamp = f"[{minutes:02d}:{seconds:02d}]"
+                transcript_with_timestamps.append(f"{timestamp} {item['text']}")
             
             # Combine all transcript text
             full_text = ' '.join([item['text'] for item in transcript_list])
+            full_text_with_ts = '\n'.join(transcript_with_timestamps)
+            
+            # Calculate total duration
+            total_duration = transcript_list[-1].get('start', 0) + transcript_list[-1].get('duration', 0) if transcript_list else 0
+            duration_minutes = int(total_duration) // 60
+            duration_seconds = int(total_duration) % 60
             
             # Check if text is too long (Gemini has token limits)
             if len(full_text) > 50000:
                 logger.warning("Transcript is very long, truncating to 50000 characters")
                 full_text = full_text[:50000]
+                # Also truncate the timestamped version
+                full_text_with_ts = '\n'.join(transcript_with_timestamps[:min(500, len(transcript_with_timestamps))])
             
-            logger.info(f"Summarizing {len(full_text)} characters of transcript")
+            logger.info(f"Summarizing {len(full_text)} characters of transcript with {len(transcript_list)} segments")
             
-            # Use Gemini to summarize
-            prompt = f"""Please provide a comprehensive summary of the following YouTube video transcript. 
-            
+            # Use Gemini to summarize - create a detailed prompt for comprehensive analysis
+            prompt = f"""Please provide an EXTREMELY DETAILED and COMPREHENSIVE summary of the following YouTube video transcript.
+
+IMPORTANT: Include timestamps [MM:SS] for all key points, moments, and sections discussed.
+
+Video Metadata:
+- Total Duration: {duration_minutes:02d}:{duration_seconds:02d} minutes
+- Total Segments: {len(transcript_list)} segments
+- Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
 The summary should include:
-1. Main topic and key points
-2. Important concepts or ideas discussed
-3. Key takeaways
-4. Any statistics or important numbers mentioned
-5. Conclusions or recommendations (if any)
 
-Keep the summary well-structured with sections and bullet points.
+1. **EXECUTIVE SUMMARY** (2-3 sentences)
+   - What is the video fundamentally about?
+   - Main message and purpose
 
-Transcript:
-{full_text}"""
+2. **VIDEO TIMELINE & KEY SECTIONS WITH TIMESTAMPS**
+   - For each major topic/section, provide:
+     - Exact timestamp [MM:SS] when section starts
+     - What is being discussed
+     - Key points and important details
+     - Speaker's emphasis and tone
+     - Duration of each section
+
+3. **MAIN TOPIC AND CORE MESSAGE**
+   - Primary subject matter
+   - Central thesis or argument
+   - Overall narrative flow
+
+4. **DETAILED KEY POINTS** (Numbered, with timestamps)
+   - Each point with its timestamp
+   - Explanation of importance
+   - Related context
+
+5. **IMPORTANT CONCEPTS & DEFINITIONS** (with timestamps)
+   - Each concept explained
+   - Why it matters
+   - Examples provided in the video
+
+6. **STATISTICS, DATA & NUMBERS** (with timestamps)
+   - All quantifiable information
+   - Percentages, metrics, values
+   - Sources mentioned
+
+7. **QUOTES & NOTABLE STATEMENTS** (with exact timestamps)
+   - Important quotes
+   - Key statements or declarations
+   - Speaker's emphasis
+
+8. **VISUAL DESCRIPTIONS** (if mentioned with timestamps)
+   - What was shown on screen
+   - Visual aids or demonstrations
+   - Graphics or charts mentioned
+
+9. **TARGET AUDIENCE**
+   - Who is this video for?
+   - Required background knowledge
+   - Difficulty level
+
+10. **KEY TAKEAWAYS** (5-10 main learnings)
+    - What viewers should remember
+    - Practical applications
+    - Action items if any
+
+11. **CHAPTER BREAKDOWN** (If applicable)
+    - Introduction [00:00]
+    - Body sections [MM:SS - MM:SS]
+    - Conclusion [MM:SS]
+
+12. **OVERALL ASSESSMENT**
+    - Quality of content
+    - Credibility and accuracy
+    - Engagement level
+    - Educational value
+    - Entertainment value
+    - Recommendations
+
+13. **VIEWER QUESTIONS ANSWERED**
+    - Common questions about the topic
+    - Answers from the video
+
+14. **RELATED TOPICS & SUGGESTIONS**
+    - Topics mentioned but not deeply explored
+    - Suggestions for further learning
+
+FORMAT:
+- Use clear markdown headers
+- Use timestamps for all references
+- Use bullet points for listelists
+- Use numbered lists for sequential information
+- Bold important terms and concepts
+- Include time references for everything possible
+
+TRANSCRIPT WITH TIMESTAMPS:
+{full_text_with_ts}
+
+Please analyze this comprehensively and provide a detailed, well-structured summary with timestamps for every key point."""
             
-            result = gemini_service.generate_summary(full_text, prompt_type='video')
-            
-            if result.get('success'):
+            try:
+                # Try using Gemini API directly
+                import google.generativeai as genai
+                genai.configure(api_key=os.getenv('GEMINI_API_KEY', ''))
+                model = genai.GenerativeModel('gemini-2.0-flash')
+                response = model.generate_content(prompt)
+                
+                summary = response.text if response and hasattr(response, 'text') else str(response)
+                
                 return {
                     'success': True,
-                    'summary': result.get('summary'),
+                    'summary': summary,
                     'summary_type': 'gemini_ai'
                 }
-            else:
-                logger.error(f"Gemini summarization failed: {result.get('error')}")
-                # Fallback to simple summarization
+            except Exception as gemini_err:
+                logger.warning(f"Gemini direct call failed: {str(gemini_err)}, using fallback")
                 return self._simple_summarize(transcript_list)
                 
-        except ImportError:
-            logger.warning("Gemini service not available, using simple summarization")
+        except ImportError as ie:
+            logger.warning(f"Import error: {str(ie)}, using simple summarization")
             return self._simple_summarize(transcript_list)
         except Exception as e:
             logger.error(f"Error summarizing transcript: {str(e)}")
-            return {
-                'success': False,
-                'error': 'Failed to summarize transcript',
-                'details': str(e)
-            }
+            return self._simple_summarize(transcript_list)
 
     def _simple_summarize(self, transcript_list):
         """
