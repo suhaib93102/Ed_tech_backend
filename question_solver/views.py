@@ -1419,14 +1419,41 @@ RULES FOR QUESTIONS:
                     json_text = json_match.group()
                     logger.info(f"[PREDICTED_Q] Found JSON object: {len(json_text)} chars")
                     
-                    # Fix common JSON issues: newlines in strings, unescaped quotes
-                    json_text = json_text.replace('\n', '\\n').replace('\r', '\\r')
+                    # Fix JSON issues: handle newlines within string values properly
+                    # Mark string boundaries and escape newlines only inside strings
+                    in_string = False
+                    escaped = False
+                    fixed_chars = []
+                    
+                    for i, char in enumerate(json_text):
+                        if escaped:
+                            fixed_chars.append(char)
+                            escaped = False
+                            continue
+                        
+                        if char == '\\' and i < len(json_text) - 1:
+                            fixed_chars.append(char)
+                            escaped = True
+                            continue
+                        
+                        if char == '"':
+                            in_string = not in_string
+                            fixed_chars.append(char)
+                        elif (char == '\n' or char == '\r') and in_string:
+                            # Escape newlines that appear inside string values
+                            fixed_chars.append('\\')
+                            fixed_chars.append(char)
+                        else:
+                            fixed_chars.append(char)
+                    
+                    json_text = ''.join(fixed_chars)
+                    logger.info(f"[PREDICTED_Q] Fixed JSON for parsing")
                     
                     try:
                         questions_data = json.loads(json_text)
-                        logger.info(f"[PREDICTED_Q] JSON parsing successful (after extraction)")
+                        logger.info(f"[PREDICTED_Q] JSON parsing successful (after fixing)")
                     except json.JSONDecodeError as e2:
-                        logger.error(f"[PREDICTED_Q] JSON extraction failed: {e2}")
+                        logger.error(f"[PREDICTED_Q] JSON parsing failed: {e2}")
                         logger.error(f"[PREDICTED_Q] Problematic text (first 500 chars): {json_text[:500]}")
                         return Response({
                             'success': False,
