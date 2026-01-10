@@ -47,6 +47,13 @@ class GeminiService:
 
 Topic: {topic}
 
+IMPORTANT FORMATTING RULES:
+- Return ONLY valid JSON, no markdown, no code blocks, no explanations
+- All text inside strings MUST be single-line only (no newlines/line breaks in strings)
+- If a question would span multiple lines, combine it into one line using periods or semicolons
+- Escape all special characters properly (use \\n for newlines in explanations if needed)
+- Ensure all strings are properly closed with quotes
+
 Please format the response as a valid JSON object with the following structure:
 {{
     "title": "Quiz Title",
@@ -55,10 +62,10 @@ Please format the response as a valid JSON object with the following structure:
     "questions": [
         {{
             "id": 1,
-            "question": "Question text here?",
+            "question": "Question text here (single line)?",
             "options": ["Option A", "Option B", "Option C", "Option D"],
             "correctAnswer": 0,
-            "explanation": "Explanation of the correct answer"
+            "explanation": "Explanation of the correct answer (single line)"
         }}
     ]
 }}
@@ -68,7 +75,7 @@ Rules:
 - Provide 4 options for each question
 - correctAnswer should be the index (0-3) of the correct option
 - Include a brief explanation for each answer
-- Ensure JSON is properly formatted
+- Ensure JSON is properly formatted with all strings on single lines
 """
             
             logger.info(f"Generating quiz for topic: {topic}")
@@ -83,7 +90,58 @@ Rules:
             elif '```' in response_text:
                 response_text = response_text.split('```')[1].split('```')[0].strip()
             
-            quiz_data = json.loads(response_text)
+            # Try to parse JSON, with aggressive repair if needed
+            try:
+                quiz_data = json.loads(response_text)
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"Initial JSON parse failed at {json_err.pos}: {json_err.msg}. Attempting repair...")
+                
+                # More aggressive repair: Replace all unescaped newlines within strings
+                def repair_json_strictly(text):
+                    """Repair JSON by escaping all literal newlines in strings"""
+                    result = []
+                    i = 0
+                    while i < len(text):
+                        # Look for string start
+                        if text[i] == '"':
+                            result.append('"')
+                            i += 1
+                            # Process string contents
+                            while i < len(text):
+                                if text[i] == '\\' and i + 1 < len(text):
+                                    # Escape sequence - keep as is
+                                    result.append(text[i:i+2])
+                                    i += 2
+                                elif text[i] == '"':
+                                    # End of string
+                                    result.append('"')
+                                    i += 1
+                                    break
+                                elif text[i] in '\n\r':
+                                    # Literal newline in string - escape it
+                                    result.append('\\n')
+                                    i += 1
+                                    # Skip following whitespace
+                                    while i < len(text) and text[i] in ' \t':
+                                        i += 1
+                                else:
+                                    result.append(text[i])
+                                    i += 1
+                        else:
+                            result.append(text[i])
+                            i += 1
+                    return ''.join(result)
+                
+                repaired = repair_json_strictly(response_text)
+                logger.info(f"Attempting parse with repaired JSON (length: {len(repaired)} vs {len(response_text)})")
+                try:
+                    quiz_data = json.loads(repaired)
+                    logger.info("✅ Successfully repaired and parsed JSON!")
+                except json.JSONDecodeError as err2:
+                    logger.error(f"Still unable to parse after strict repair at {err2.pos}: {err2.msg}")
+                    logger.error(f"Repaired text around error (chars {max(0, err2.pos-50)}...{err2.pos+50}):")
+                    logger.error(repr(repaired[max(0, err2.pos-50):err2.pos+50]))
+                    raise json_err  # Raise original error
             
             logger.info(f"Successfully generated {len(quiz_data.get('questions', []))} questions")
             return {
@@ -93,7 +151,9 @@ Rules:
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            logger.error(f"Response text: {response_text}")
+            if 'response_text' in locals():
+                logger.error(f"Response text length: {len(response_text)}, first 400 chars:")
+                logger.error(response_text[:400])
             return {
                 'success': False,
                 'error': 'Failed to parse quiz data',

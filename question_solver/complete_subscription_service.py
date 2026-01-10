@@ -699,3 +699,4 @@ class CompleteSubscriptionService:
                 'success': False,
                 'error': str(e)
             }
+
