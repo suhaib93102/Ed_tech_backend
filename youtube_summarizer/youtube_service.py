@@ -70,11 +70,7 @@ class YouTubeService:
             return None
     
     def extract_video_id(self, url):
-        """
-        Extract video ID from YouTube URL
-        """
         try:
-            # Handle various YouTube URL formats
             if 'youtu.be/' in url:
                 return url.split('youtu.be/')[1].split('?')[0]
             elif 'youtube.com/watch?v=' in url:
@@ -87,9 +83,6 @@ class YouTubeService:
             return None
 
     def get_transcript(self, video_id):
-        """
-        Extract transcript from YouTube video
-        """
         try:
             logger.info(f"Fetching transcript for video ID: {video_id}")
             

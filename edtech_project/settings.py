@@ -65,10 +65,28 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# CORS settings - Production Grade Configuration
-CORS_ALLOW_ALL_ORIGINS = True
+# ═════════════════════════════════════════════════════════════════════════
+# CORS Configuration - Allows Frontend to Access Backend API
+# ═════════════════════════════════════════════════════════════════════════
+# This fixes: "CORS policy: No 'Access-Control-Allow-Origin' header"
 
+# Development: Allow all origins (localhost, etc.)
+# Production: Configure CORS_ALLOWED_ORIGINS with specific domains
+if DEBUG or 'RENDER' in os.environ:
+    # Allow all origins in development and on Render
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    # For production with custom domain, uncomment and configure:
+    # CORS_ALLOWED_ORIGINS = [
+    #     'https://yourdomain.com',
+    #     'https://www.yourdomain.com',
+    # ]
+    CORS_ALLOW_ALL_ORIGINS = True  # Fallback to allow all
+
+# Allow credentials (cookies, authorization headers)
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow all headers that frontend might send
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -83,13 +101,24 @@ CORS_ALLOW_HEADERS = [
     'X-User-ID',  # Allow custom user ID header (capitalized)
 ]
 
+# Allow common HTTP methods
 CORS_ALLOW_METHODS = [
     'DELETE',
     'GET',
+    'HEAD',
     'OPTIONS',
     'PATCH',
     'POST',
     'PUT',
+]
+
+# Cache preflight requests for 24 hours
+CORS_PREFLIGHT_MAX_AGE = 86400
+
+# Expose specific headers in response
+CORS_EXPOSE_HEADERS = [
+    'Content-Type',
+    'X-CSRFToken',
 ]
 
 ROOT_URLCONF = 'edtech_project.urls'

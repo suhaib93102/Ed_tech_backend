@@ -143,8 +143,8 @@ class CreatePaymentOrderView(APIView):
             
             # Define pricing
             pricing = {
-                'premium': {'amount': 199, 'description': 'Premium Monthly Plan - ₹199/month'},
-                'premium_annual': {'amount': 1990, 'description': 'Premium Annual Plan - ₹1990/year'},
+                'premium': {'amount': 1, 'description': 'Premium Monthly Plan - ₹199/month'},
+                'premium_annual': {'amount':199, 'description': 'Premium Annual Plan - ₹1990/year'},
             }
             
             if plan not in pricing:

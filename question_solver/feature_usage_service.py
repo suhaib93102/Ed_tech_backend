@@ -43,6 +43,11 @@ class FeatureUsageService:
     def check_feature_available(user_id, feature_name):
         """
         Check if user can use a feature based on plan limits
+        
+        CRITICAL: This is called BEFORE every feature usage
+        It enforces the free tier 3-use limit
+        After payment, subscription_status='active' → unlimited access
+        
         Returns: {'allowed': bool, 'reason': str, 'limit': int, 'used': int}
         """
         if feature_name not in FeatureUsageService.FEATURES:
@@ -54,6 +59,26 @@ class FeatureUsageService:
             }
         
         subscription = FeatureUsageService.get_or_create_subscription(user_id)
+        
+        # STEP 1: Check if user has active paid subscription
+        # If plan is 'basic' or 'premium' AND subscription_status is 'active'
+        # → Grant unlimited access immediately
+        if subscription.plan != 'free' and subscription.subscription_status == 'active':
+            logger.info(f"[CHECK_FEATURE] {user_id}/{feature_name}: UNLIMITED (subscription active)")
+            return {
+                'allowed': True,
+                'reason': 'Unlimited access (paid subscription)',
+                'unlimited': True,
+                'plan': subscription.plan,
+                'subscription_status': subscription.subscription_status,
+            }
+        
+        # STEP 2: If user is past_due or subscription failed, re-enable limits
+        if subscription.subscription_status in ['past_due', 'failed', 'cancelled']:
+            logger.info(f"[CHECK_FEATURE] {user_id}/{feature_name}: LIMITS ACTIVE (subscription {subscription.subscription_status})")
+            # Fall through to check free tier limits
+        
+        # STEP 3: Check free tier limits (3 uses per feature)
         limits = subscription.get_feature_limits()
         
         if feature_name not in limits:
@@ -71,7 +96,7 @@ class FeatureUsageService:
         
         # Check if usage is within limit
         if limit is None:
-            # Unlimited
+            # Unlimited (shouldn't happen for free tier, but handle it)
             return {
                 'allowed': True,
                 'reason': 'Unlimited access',
@@ -80,13 +105,17 @@ class FeatureUsageService:
             }
         
         if used >= limit:
+            logger.warning(f"[CHECK_FEATURE] {user_id}/{feature_name}: BLOCKED ({used}/{limit})")
             return {
                 'allowed': False,
                 'reason': f'Monthly limit reached ({used}/{limit} used)',
                 'limit': limit,
                 'used': used,
+                'upgrade_required': True,
+                'upgrade_message': f'Free tier limited to {limit} uses/month. Upgrade to continue.'
             }
         
+        logger.info(f"[CHECK_FEATURE] {user_id}/{feature_name}: ALLOWED ({used}/{limit})")
         return {
             'allowed': True,
             'reason': f'Within limit ({used}/{limit})',

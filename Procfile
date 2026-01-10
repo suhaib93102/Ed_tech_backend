@@ -1,0 +1,2 @@
+release: python manage.py migrate --noinput
+web: gunicorn edtech_project.wsgi:application --workers 2 --worker-class sync --bind 0.0.0.0:$PORT --timeout 120 --max-requests 1000 --max-requests-jitter 100

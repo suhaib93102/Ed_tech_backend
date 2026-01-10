@@ -67,6 +67,7 @@ def feature_status(request, feature_name):
 
 
 @require_http_methods(["POST"])
+@csrf_exempt
 @require_auth
 def check_feature_usage(request):
     """
@@ -114,8 +115,8 @@ def check_feature_usage(request):
 
 
 @require_http_methods(["POST"])
-@require_auth
 @csrf_exempt
+@require_auth
 def record_feature_usage(request):
     """
     Record feature usage after successful usage

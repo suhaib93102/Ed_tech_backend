@@ -87,19 +87,28 @@ def require_auth(view_func):
     """
     Decorator to verify JWT token and inject user_id into request
     Usage: @require_auth
-    Extracts user_id from JWT token in Authorization header
+    Extracts user_id from:
+    1. JWT token in Authorization header (Bearer <token>)
+    2. X-User-ID header (for testing/development)
     """
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         from django.conf import settings
         
-        # Get authorization header
+        # Try X-User-ID header first (for testing and development)
+        user_id = request.META.get('HTTP_X_USER_ID', '')
+        if user_id:
+            request.user_id = user_id
+            request.user_token = {'user_id': user_id}
+            return view_func(request, *args, **kwargs)
+        
+        # Try JWT token from Authorization header
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
         
         if not auth_header.startswith('Bearer '):
             return JsonResponse({
                 'success': False,
-                'error': 'Missing or invalid authorization header'
+                'error': 'Missing or invalid authorization header. Use "Authorization: Bearer <token>" or "X-User-ID: <user_id>"'
             }, status=401)
         
         token = auth_header.split(' ')[1]

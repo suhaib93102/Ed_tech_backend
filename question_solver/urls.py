@@ -107,6 +107,22 @@ from .usage_api_views import (
     subscription_status,
     usage_stats
 )
+from .subscription_endpoints import (
+    create_subscription_order as create_sub_order_new,
+    verify_payment as verify_payment_new,
+    subscription_webhook,
+    get_subscription_status as get_sub_status_new,
+    post_payment_validation,
+    get_available_plans as get_plans_new,
+    get_razorpay_key as get_razorpay_key_new
+)
+from .admin_users_views import (
+    get_all_users,
+    get_feature_users,
+    get_user_detail,
+    get_usage_analytics,
+    search_users
+)
 
 urlpatterns = [
     path('solve/', QuestionSolverView.as_view(), name='solve-question'),
@@ -125,13 +141,15 @@ urlpatterns = [
     path('subscription/status/', SubscriptionStatusView.as_view(), name='subscription-status'),
     path('subscription/plans/', GetSubscriptionPlansView.as_view(), name='subscription-plans'),
     
-    # Razorpay Subscription API (NEW - Recurring Payments with ₹1 trial)
-    path('subscriptions/create/', create_subscription, name='create-subscription-api'),
-    path('subscriptions/verify-payment/', verify_payment, name='verify-subscription-payment-api'),
-    path('subscriptions/webhook/', subscription_webhook, name='subscription-webhook-api'),
-    path('subscriptions/status/', get_subscription_status, name='get-subscription-status-api'),
-    path('subscriptions/cancel/', cancel_user_subscription, name='cancel-subscription-api'),
-    path('subscriptions/plans/', get_available_plans, name='get-plans-api'),
+    # Razorpay Subscription API (NEW - Recurring Payments with ₹1 trial + Complete Flow)
+    # NEW endpoints using complete_subscription_service (handles entire lifecycle)
+    path('subscriptions/create/', create_sub_order_new, name='create-subscription-complete'),
+    path('subscriptions/verify-payment/', verify_payment_new, name='verify-payment-complete'),
+    path('subscriptions/webhook/', subscription_webhook, name='subscription-webhook-complete'),
+    path('subscriptions/status/', get_sub_status_new, name='get-subscription-status-complete'),
+    path('subscriptions/validate/', post_payment_validation, name='post-payment-validation'),
+    path('subscriptions/plans/', get_plans_new, name='get-available-plans'),
+    path('subscriptions/razorpay-key/', get_razorpay_key_new, name='razorpay-key-new'),
     
     # Legacy Razorpay Subscription API (kept for backward compatibility)
     path('subscription/create-razorpay/', create_razorpay_subscription, name='create-razorpay-subscription'),
@@ -208,4 +226,11 @@ urlpatterns = [
     path('usage/record/', record_feature_usage, name='record-feature-usage'),
     path('usage/subscription/', subscription_status, name='usage-subscription-status'),
     path('usage/stats/', usage_stats, name='usage-stats'),
+    
+    # Admin Users Dashboard endpoints (NEW)
+    path('admin/users/', get_all_users, name='admin-get-users'),
+    path('admin/users/search/', search_users, name='admin-search-users'),
+    path('admin/users/<str:user_id>/', get_user_detail, name='admin-user-detail'),
+    path('admin/users/feature/<str:feature_name>/', get_feature_users, name='admin-feature-users'),
+    path('admin/analytics/', get_usage_analytics, name='admin-analytics'),
 ]
