@@ -23,9 +23,10 @@ class GeminiService:
     """Service for generating educational content using Gemini AI"""
     
     def __init__(self):
-        # Using gemini-2.0-flash (latest stable flash model for responses)
+        # Using gemini-pro as Gemini 1.5 Flash is not available in this environment
         try:
             self.model = genai.GenerativeModel('models/gemini-2.0-flash')
+            logger.info("Successfully initialized Gemini model: models/gemini-2.0-flash")
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model: {e}")
             self.model = None

@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, Any, Tuple
 
 # Configuration
-API_BASE = "http://localhost:8000/api"
 HEADERS_TEMPLATE = {
     "Content-Type": "application/json",
     "X-User-ID": None,

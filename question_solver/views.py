@@ -1345,7 +1345,7 @@ RULES FOR QUESTIONS:
 - Include expected answer length to guide studying
 """
 
-            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('models/gemini-2.0-flash')
+            model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('gemini-pro')
             
             # Generate questions with error handling
             try:

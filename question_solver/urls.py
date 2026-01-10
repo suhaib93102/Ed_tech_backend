@@ -105,7 +105,13 @@ from .usage_api_views import (
     check_feature_usage,
     record_feature_usage,
     subscription_status,
-    usage_stats
+    usage_stats,
+    real_time_usage,
+    usage_history,
+    test_feature_restriction,
+    test_multiple_features,
+    enforce_usage_check,
+    feature_restriction_details
 )
 from .subscription_endpoints import (
     create_subscription_order as create_sub_order_new,
@@ -226,6 +232,16 @@ urlpatterns = [
     path('usage/record/', record_feature_usage, name='record-feature-usage'),
     path('usage/subscription/', subscription_status, name='usage-subscription-status'),
     path('usage/stats/', usage_stats, name='usage-stats'),
+    
+    # Real-time Usage Tracking endpoints (NEW)
+    path('usage/real-time/', real_time_usage, name='usage-real-time'),
+    path('usage/history/', usage_history, name='usage-history'),
+    
+    # Usage Restriction Test & Enforcement endpoints (NEW)
+    path('usage/test/restriction/', test_feature_restriction, name='test-restriction'),
+    path('usage/test/all-features/', test_multiple_features, name='test-all-features'),
+    path('usage/enforce-check/', enforce_usage_check, name='enforce-usage-check'),
+    path('usage/restriction/<str:feature_name>/', feature_restriction_details, name='feature-restriction-details'),
     
     # Admin Users Dashboard endpoints (NEW)
     path('admin/users/', get_all_users, name='admin-get-users'),
