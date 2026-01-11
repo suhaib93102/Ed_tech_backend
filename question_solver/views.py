@@ -1347,7 +1347,6 @@ RULES FOR QUESTIONS:
 
             model = gemini_service.model or __import__('google.generativeai', fromlist=['GenerativeModel']).GenerativeModel('gemini-pro')
             
-            # Generate questions with error handling
             try:
                 logger.info(f"[PREDICTED_Q] Calling Gemini API for {num_questions} questions (language: {language})")
                 response = model.generate_content(prompt)

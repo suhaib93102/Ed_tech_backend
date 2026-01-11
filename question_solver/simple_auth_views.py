@@ -188,7 +188,6 @@ class LoginView(APIView):
 
     def post(self, request):
         try:
-            # Accept multiple possible keys coming from clients
             username_or_email = (
                 request.data.get('username') or
                 request.data.get('email') or
@@ -342,10 +341,10 @@ class VerifyTokenView(APIView):
 @method_decorator(csrf_exempt, name='dispatch')
 class ChangePasswordView(APIView):
     """
-    Change user password
+    Change user password using email (no token required)
     POST /api/auth/change-password/
-    Headers: Authorization: Bearer <token>
     Body: {
+        "email": "user@example.com",
         "old_password": "oldpass123",
         "new_password": "newpass123"
     }
@@ -353,47 +352,31 @@ class ChangePasswordView(APIView):
 
     def post(self, request):
         try:
-            # Get token from header
-            auth_header = request.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer '):
-                return Response({
-                    'success': False,
-                    'error': 'Invalid authorization header'
-                }, status=status.HTTP_401_UNAUTHORIZED)
-
-            token = auth_header.split(' ')[1]
-            user_id, payload = validate_jwt_token(token)
-
-            if not user_id:
-                return Response({
-                    'success': False,
-                    'error': payload.get('error', 'Invalid token')
-                }, status=status.HTTP_401_UNAUTHORIZED)
-
-            # Get user
-            try:
-                user = User.objects.get(id=user_id)
-            except User.DoesNotExist:
-                return Response({
-                    'success': False,
-                    'error': 'User not found'
-                }, status=status.HTTP_404_NOT_FOUND)
-
+            email = request.data.get('email', '').strip().lower()
             old_password = request.data.get('old_password', '')
             new_password = request.data.get('new_password', '')
 
-            if not old_password or not new_password:
+            if not email or not old_password or not new_password:
                 return Response({
                     'success': False,
-                    'error': 'Old and new passwords are required'
+                    'error': 'Email, old password, and new password are required'
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get user by email
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'User not found with this email'
+                }, status=status.HTTP_404_NOT_FOUND)
 
             # Verify old password
             if not check_password(old_password, user.password):
                 return Response({
                     'success': False,
                     'error': 'Incorrect old password'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                }, status=status.HTTP_401_UNAUTHORIZED)
 
             # Validate new password
             is_valid, message = validate_password(new_password)

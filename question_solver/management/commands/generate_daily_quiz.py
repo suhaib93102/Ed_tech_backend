@@ -1,7 +1,3 @@
-"""
-Management command to generate daily GK quiz
-Usage: python manage.py generate_daily_quiz [--date YYYY-MM-DD]
-"""
 from django.core.management.base import BaseCommand
 from datetime import date, datetime
 from question_solver.models import DailyQuiz, DailyQuestion
@@ -29,12 +25,10 @@ class Command(BaseCommand):
         else:
             quiz_date = date.today()
 
-        # Check if quiz already exists for this date
         if DailyQuiz.objects.filter(date=quiz_date).exists():
             self.stdout.write(self.style.WARNING(f'Quiz already exists for {quiz_date}'))
             return
 
-        # Create Daily Quiz
         daily_quiz = DailyQuiz.objects.create(
             date=quiz_date,
             title=f'Daily GK Quiz - {quiz_date.strftime("%B %d, %Y")}',

@@ -1,9 +1,3 @@
-"""
-Admin Withdrawal API - Complete withdrawal management for administrators
-Handles approval, rejection, and deletion of withdrawal requests
-Production-ready with proper authentication and authorization
-"""
-
 from django.db import transaction as db_transaction
 from django.utils import timezone
 from rest_framework.decorators import api_view
@@ -18,22 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 class AdminWithdrawalService:
-    """
-    Admin operations for withdrawal management
-    Ensures proper authorization and audit trails
-    """
-
     @staticmethod
     def require_admin(request):
-        """Check if user is admin"""
         try:
-            # Check if user is staff/admin
             if hasattr(request, 'user') and request.user.is_staff:
                 return True
-            # Alternatively, check for admin token in headers
             admin_token = request.headers.get('X-Admin-Token')
             if admin_token:
-                # Implement your admin token validation here
                 return True
         except Exception:
             pass
@@ -42,27 +27,11 @@ class AdminWithdrawalService:
     @staticmethod
     @db_transaction.atomic
     def approve_withdrawal(withdrawal_id, admin_notes=""):
-        """
-        Approve a withdrawal request and mark as processing
-        
-        Args:
-            withdrawal_id (str): ID of withdrawal to approve
-            admin_notes (str): Optional admin notes
-            
-        Returns:
-            dict: {
-                'success': bool,
-                'message': message,
-                'withdrawal': withdrawal_data or None,
-                'error': error_message or None
-            }
-        """
         logger.info(f"[ADMIN_WITHDRAWAL] Approving withdrawal {withdrawal_id}")
 
         try:
             withdrawal = CoinWithdrawal.objects.select_for_update().get(id=withdrawal_id)
 
-            # Only pending withdrawals can be approved
             if withdrawal.status != 'pending':
                 logger.warning(f"[ADMIN_WITHDRAWAL] Cannot approve {withdrawal.status} withdrawal")
                 return {
@@ -72,7 +41,6 @@ class AdminWithdrawalService:
                     'error': f'Cannot approve {withdrawal.status} withdrawal.'
                 }
 
-            # Update withdrawal status
             withdrawal.status = 'processing'
             withdrawal.processed_at = timezone.now()
             if admin_notes:
@@ -117,22 +85,6 @@ class AdminWithdrawalService:
     @staticmethod
     @db_transaction.atomic
     def reject_withdrawal(withdrawal_id, reason="", admin_notes=""):
-        """
-        Reject a withdrawal and refund coins to user
-        
-        Args:
-            withdrawal_id (str): ID of withdrawal to reject
-            reason (str): Rejection reason
-            admin_notes (str): Optional admin notes
-            
-        Returns:
-            dict: {
-                'success': bool,
-                'message': message,
-                'withdrawal': withdrawal_data or None,
-                'error': error_message or None
-            }
-        """
         logger.info(f"[ADMIN_WITHDRAWAL] Rejecting withdrawal {withdrawal_id}, reason: {reason}")
 
         try:
