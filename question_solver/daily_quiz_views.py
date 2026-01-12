@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 def create_or_get_daily_quiz(language='english'):
     """
-    Auto-generate today's Daily Quiz using Gemini if it doesn't exist
+    Auto-generate today's Daily Quiz Bank using Gemini if it doesn't exist
+    Generates 20 questions so users get random selection each time (no repetition)
     """
     today = date.today()
     daily_quiz = DailyQuiz.objects.filter(date=today, is_active=True).first()
@@ -30,10 +31,12 @@ def create_or_get_daily_quiz(language='english'):
         return daily_quiz
     
     # Generate new quiz using Gemini with language support
-    logger.info(f"Generating new Daily Quiz for {today} in {language} language")
+    logger.info(f"Generating Daily Quiz Question Bank for {today} in {language} language")
+    logger.info(f"Generating 20 questions so users get random selection each time")
     
     try:
-        result = gemini_service.generate_daily_quiz(num_questions=5, language=language)
+        # Generate 20 questions instead of 5 to create a question bank
+        result = gemini_service.generate_daily_quiz(num_questions=20, language=language)
         
         if not result.get('success'):
             logger.error(f"Failed to generate Daily Quiz: {result.get('error')}")
@@ -50,12 +53,12 @@ def create_or_get_daily_quiz(language='english'):
             daily_quiz = DailyQuiz.objects.create(
                 date=today,
                 title=f'Daily GK Quiz - {today.strftime("%B %d, %Y")}',
-                description='Test your general knowledge with AI-generated questions!',
+                description='Test your general knowledge with AI-generated questions! Get different questions each time.',
                 total_questions=len(questions_data),
                 difficulty='medium'
             )
             
-            # Add questions
+            # Add questions to the bank
             for idx, q_data in enumerate(questions_data, 1):
                 DailyQuestion.objects.create(
                     daily_quiz=daily_quiz,
@@ -69,7 +72,7 @@ def create_or_get_daily_quiz(language='english'):
                     fun_fact=q_data.get('fun_fact', '')
                 )
             
-            logger.info(f"Successfully created Daily Quiz with {len(questions_data)} questions")
+            logger.info(f"Successfully created Daily Quiz Bank with {len(questions_data)} questions")
             return daily_quiz
             
     except Exception as e:
@@ -80,19 +83,21 @@ def create_or_get_daily_quiz(language='english'):
 @api_view(['GET'])
 def get_daily_quiz(request):
     """
-    Get today's daily coin quiz (auto-generates using Gemini if not exists)
-    Returns: quiz metadata + questions (without correct answers) + coin logic + UI metadata
-    Format matches strict JSON requirements for daily_coin_quiz
+    Get today's daily quiz with RANDOM question selection from the question bank
+    Each request gets 5 different random questions from the 20-question bank
+    Returns: quiz metadata + random questions (without correct answers)
     """
     user_id = request.query_params.get('user_id', 'anonymous')
     language = request.query_params.get('language', 'english').lower()
     today = date.today()
     
     try:
+        import random
+        
         # Get quiz settings for coin rewards
         settings = QuizSettings.get_settings()
         
-        # Auto-generate quiz if it doesn't exist (ensure 10 questions)
+        # Auto-generate quiz bank if it doesn't exist (creates 20 questions)
         daily_quiz = create_or_get_daily_quiz(language=language)
         
         if not daily_quiz:
@@ -101,20 +106,24 @@ def get_daily_quiz(request):
                 'message': 'Unable to create today\'s quiz. Please try again later.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        # Get questions (without revealing correct answers)
-        questions = DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('order')
+        # Get ALL questions from the bank
+        all_questions = DailyQuestion.objects.filter(daily_quiz=daily_quiz).order_by('?')
+        
+        # Select 5 random questions from the bank each time
+        selected_questions = list(all_questions)[:5]
+        random.shuffle(selected_questions)
+        
+        logger.info(f"Selected {len(selected_questions)} random questions from {all_questions.count()} question bank")
         
         questions_data = []
-        for idx, q in enumerate(questions, 1):
+        for idx, q in enumerate(selected_questions, 1):
             questions_data.append({
                 'id': idx,
                 'question': q.question_text,
-                'options': [opt['text'] for opt in q.options],  # Array of strings ["A", "B", "C", "D"]
+                'options': [opt['text'] for opt in q.options] if q.options else [],
                 'category': q.category,
                 'difficulty': q.difficulty,
             })
-        # Enforce maximum of 5 questions for the Daily Quiz
-        questions_data = questions_data[:5]
         
         # Return format matching the strict requirements
         return Response({
@@ -125,6 +134,9 @@ def get_daily_quiz(request):
                 'date': str(today),
                 'title': daily_quiz.title,
                 'description': daily_quiz.description,
+                'language': language,
+                'question_bank_size': all_questions.count(),
+                'questions_shown': len(questions_data),
             },
             'coins': {
                 'attempt_bonus': settings.daily_quiz_attempt_bonus,
@@ -134,10 +146,10 @@ def get_daily_quiz(request):
             'questions': [
                 {
                     'id': idx + 1,
-                    'question': (q.get('question') or q.get('question_text') or q.get('question_text') if isinstance(q, dict) else q),
-                    'options': [opt.get('text') if isinstance(opt, dict) else opt for opt in q.get('options', [])],
-                    'category': q.get('category', 'general') if isinstance(q, dict) else 'general',
-                    'difficulty': q.get('difficulty', 'medium') if isinstance(q, dict) else 'medium',
+                    'question': q.get('question', ''),
+                    'options': q.get('options', []),
+                    'category': q.get('category', 'general'),
+                    'difficulty': q.get('difficulty', 'medium'),
                 }
                 for idx, q in enumerate(questions_data)
             ],
@@ -149,10 +161,11 @@ def get_daily_quiz(request):
                 'show_coin_animation': True,
             },
             'quiz_id': str(daily_quiz.id),
-            'already_attempted': False,  # Always allow attempts (multiple per day)
+            'already_attempted': False,
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
+        logger.error(f"Error in get_daily_quiz: {e}", exc_info=True)
         return Response({
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

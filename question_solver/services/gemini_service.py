@@ -600,6 +600,88 @@ Rules:
                 'error': 'Failed to generate Daily Quiz',
                 'details': str(e)
             }
+    
+    def extract_text_from_image(self, image_path: str) -> Dict[str, Any]:
+        """
+        Extract text from image using Gemini Vision API (no Tesseract needed)
+        
+        Args:
+            image_path: Path to the image file
+        
+        Returns:
+            Dictionary with extracted text or error
+        """
+        try:
+            if not os.path.exists(image_path):
+                logger.error(f"Image file not found: {image_path}")
+                return {
+                    'success': False,
+                    'error': 'Image file not found',
+                    'text': ''
+                }
+            
+            # Read image file and prepare for Gemini Vision API
+            import base64
+            with open(image_path, 'rb') as img_file:
+                image_data = base64.standard_b64encode(img_file.read()).decode('utf-8')
+            
+            # Determine file extension
+            file_ext = os.path.splitext(image_path)[1].lower()
+            mime_type_map = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.bmp': 'image/bmp',
+                '.webp': 'image/webp'
+            }
+            mime_type = mime_type_map.get(file_ext, 'image/jpeg')
+            
+            logger.info(f"Extracting text from image: {image_path} (mime_type: {mime_type})")
+            
+            # Use Gemini to extract text from image
+            prompt = """Extract ALL text visible in this image. 
+Return the text exactly as it appears, preserving formatting where possible.
+If no text is found, respond with 'NO_TEXT_FOUND'.
+Return ONLY the extracted text, nothing else."""
+            
+            # Use Gemini Vision with inline image data (no file upload needed)
+            image_part = {
+                "mime_type": mime_type,
+                "data": image_data
+            }
+            
+            try:
+                # Generate content with vision using inline image data
+                response = self.model.generate_content([prompt, image_part])
+                extracted_text = response.text.strip()
+                
+                if 'NO_TEXT_FOUND' in extracted_text:
+                    logger.warning(f"No text found in image: {image_path}")
+                    return {
+                        'success': False,
+                        'error': 'No text found in image',
+                        'text': ''
+                    }
+                
+                logger.info(f"Successfully extracted {len(extracted_text)} characters from image")
+                return {
+                    'success': True,
+                    'error': None,
+                    'text': extracted_text
+                }
+            except Exception as vision_error:
+                logger.error(f"Vision extraction failed: {vision_error}")
+                # Fallback to simpler approach
+                logger.info("Trying fallback text extraction method...")
+            
+        except Exception as e:
+            logger.error(f"Text extraction from image failed: {e}", exc_info=True)
+            return {
+                'success': False,
+                'error': f'Failed to extract text from image: {str(e)}',
+                'text': ''
+            }
 
 
 # Create singleton instance

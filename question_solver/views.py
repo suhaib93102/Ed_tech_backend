@@ -1,7 +1,3 @@
-"""
-Main API Views for Question Solver
-Implements the complete pipeline: OCR → Clean → Search → Scrape → Confidence → YouTube
-"""
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -357,7 +353,7 @@ class ServiceStatusView(APIView):
 
 class QuizGeneratorView(APIView):
     """
-    Generate quiz from topic or document text
+    Generate quiz from topic or document text with randomization support
     """
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
@@ -369,6 +365,7 @@ class QuizGeneratorView(APIView):
         - topic: Topic text or document content
         - num_questions: Number of questions (default: 5)
         - difficulty: easy, medium, or hard (default: medium)
+        - randomize: true/false to randomize questions (default: true)
         - document: Optional document file upload (.txt, .pdf, .jpg, .png)
         """
         try:
@@ -383,6 +380,7 @@ class QuizGeneratorView(APIView):
             topic = request.data.get('topic', '')
             num_questions = int(request.data.get('num_questions', 5))
             difficulty = request.data.get('difficulty', 'medium')
+            randomize = request.data.get('randomize', 'true').lower() in ['true', '1', 'yes']
             
             logger.info(f"[QUIZ_GENERATION] Topic length: {len(topic) if topic else 0}")
             logger.info(f"[QUIZ_GENERATION] Topic preview: {topic[:100] if topic else 'None'}...")
@@ -403,8 +401,9 @@ class QuizGeneratorView(APIView):
                 logger.info(f"[QUIZ_GENERATION] Document saved to: {file_path}")
                 
                 try:
-                    # Extract text from document (using OCR for images, or read text files)
-                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+                    # Extract text from document (using Tesseract OCR for images, or read text files)
+                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp')):
+                        # Use Tesseract OCR for fast local text extraction
                         ocr_result = ocr_service.extract_text_from_image(file_path)
                         if ocr_result['success']:
                             topic = ocr_result['text']
@@ -447,6 +446,7 @@ class QuizGeneratorView(APIView):
             
             logger.info("[QUIZ_GENERATION] Topic validation passed")
             logger.info(f"[QUIZ_GENERATION] Final topic length: {len(topic)}")
+            logger.info(f"[QUIZ_GENERATION] Randomize options: {randomize}")
             
             # Generate quiz using Gemini
             logger.info(f"[QUIZ_GENERATION] Calling Gemini API with {num_questions} questions, difficulty: {difficulty}")
@@ -454,8 +454,19 @@ class QuizGeneratorView(APIView):
 
             if result.get('success'):
                 logger.info("[QUIZ_GENERATION] ✅ Quiz generated successfully")
-                logger.info(f"[QUIZ_GENERATION] Quiz contains {len(result.get('quiz', {}).get('questions', []))} questions")
-                return Response(result.get('quiz'), status=status.HTTP_200_OK)
+                quiz_data = result.get('quiz', {})
+                questions = quiz_data.get('questions', [])
+                logger.info(f"[QUIZ_GENERATION] Quiz contains {len(questions)} questions")
+                
+                # Randomize questions if requested
+                if randomize and questions:
+                    import random
+                    logger.info("[QUIZ_GENERATION] Randomizing question order")
+                    random.shuffle(questions)
+                    quiz_data['questions'] = questions
+                    logger.info("[QUIZ_GENERATION] Questions randomized successfully")
+                
+                return Response(quiz_data, status=status.HTTP_200_OK)
             else:
                 logger.error(f"[QUIZ_GENERATION] ❌ Quiz generation failed: {result.get('error')}")
                 # Handle quota exceeded by returning 429 with Retry-After
@@ -526,21 +537,21 @@ class FlashcardGeneratorView(APIView):
                                                     ContentFile(document_file.read()))
                     file_path = default_storage.path(file_name)
                     
-                    # Extract text from document (using OCR for images, or read text files)
-                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif')):
+                    # Extract text from document (using Tesseract OCR for images, or read text files)
+                    if document_file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.gif', '.webp')):
                         logger.info(f"[FLASHCARD] Processing image file: {document_file.name}")
                         ocr_result = ocr_service.extract_text_from_image(file_path)
                         if ocr_result.get('success') and ocr_result.get('text', '').strip():
                             topic = ocr_result.get('text', '').strip()
-                            logger.info(f"[FLASHCARD] OCR successful: extracted {len(topic)} characters")
+                            logger.info(f"[FLASHCARD] Text extraction successful: extracted {len(topic)} characters")
                         else:
-                            logger.warning(f"[FLASHCARD] OCR failed for {document_file.name}: {ocr_result.get('error', 'Unknown error')}")
+                            logger.warning(f"[FLASHCARD] Text extraction failed for {document_file.name}: {ocr_result.get('error', 'Unknown error')}")
                             return Response({
                                 'success': False,
                                 'error': 'Failed to extract text from image',
                                 'message': 'Please ensure the image contains clear, readable text and try again',
                                 'supported_formats': ['.png', '.jpg', '.jpeg', '.gif'],
-                                'details': ocr_result.get('error', 'OCR processing failed')
+                                'details': ocr_result.get('error', 'Text extraction failed')
                             }, status=status.HTTP_400_BAD_REQUEST)
                     elif document_file.name.lower().endswith('.txt'):
                         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -1196,19 +1207,19 @@ class PredictedQuestionsView(APIView):
                         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                             document = f.read()
                         logger.info(f"[PREDICTED_Q] Extracted {len(document)} chars from text")
-                    elif document_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
-                        # Use OCR for images
-                        logger.info("[PREDICTED_Q] Processing image with OCR")
+                    elif document_file.name.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp')):
+                        # Use Tesseract OCR for images (fast local extraction)
+                        logger.info("[PREDICTED_Q] Processing image with Tesseract OCR")
                         ocr_result = ocr_service.extract_text_from_image(file_path)
                         if ocr_result.get('success'):
                             document = ocr_result.get('text', '')
-                            logger.info(f"[PREDICTED_Q] OCR successful: {len(document)} chars")
+                            logger.info(f"[PREDICTED_Q] Text extraction successful: {len(document)} chars")
                         else:
-                            logger.warning(f"[PREDICTED_Q] OCR failed: {ocr_result.get('error')}")
+                            logger.warning(f"[PREDICTED_Q] Text extraction failed: {ocr_result.get('error')}")
                             return Response({
                                 'success': False,
                                 'error': 'Failed to extract text from image',
-                                'details': ocr_result.get('error', 'OCR processing failed')
+                                'details': ocr_result.get('error', 'Text extraction failed')
                             }, status=status.HTTP_400_BAD_REQUEST)
                     elif document_file.name.lower().endswith('.pdf'):
                         # Try to extract text from PDF
