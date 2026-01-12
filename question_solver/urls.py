@@ -24,6 +24,15 @@ from .subscription_views import (
     LogFeatureUsageView,
     BillingHistoryView
 )
+# ✅ NEW: Import new subscription views for Plan A & B
+from .subscription_views import (
+    SubscriptionPlansView,
+    UserSubscriptionStatusView,
+    SubscribeView,
+    InitiatePaymentView,
+    ConfirmPaymentView,
+    CancelSubscriptionView,
+)
 from .auth_views import (
     GoogleOAuthCallbackView,
     TokenRefreshView,
@@ -152,9 +161,9 @@ urlpatterns = [
     path('subscriptions/create/', create_sub_order_new, name='create-subscription-complete'),
     path('subscriptions/verify-payment/', verify_payment_new, name='verify-payment-complete'),
     path('subscriptions/webhook/', subscription_webhook, name='subscription-webhook-complete'),
-    path('subscriptions/status/', get_sub_status_new, name='get-subscription-status-complete'),
+    # path('subscriptions/status/', get_sub_status_new, name='get-subscription-status-complete'),  # COMMENTED: Using new UserSubscriptionStatusView instead
     path('subscriptions/validate/', post_payment_validation, name='post-payment-validation'),
-    path('subscriptions/plans/', get_plans_new, name='get-available-plans'),
+    # path('subscriptions/plans/', get_plans_new, name='get-available-plans'),  # COMMENTED: Using new SubscriptionPlansView instead
     path('subscriptions/razorpay-key/', get_razorpay_key_new, name='razorpay-key-new'),
     
     # Legacy Razorpay Subscription API (kept for backward compatibility)
@@ -249,4 +258,14 @@ urlpatterns = [
     path('admin/users/<str:user_id>/', get_user_detail, name='admin-user-detail'),
     path('admin/users/feature/<str:feature_name>/', get_feature_users, name='admin-feature-users'),
     path('admin/analytics/', get_usage_analytics, name='admin-analytics'),
+    
+    # ✅ NEW: Subscription & Pricing Management endpoints (Plan A & B)
+    path('subscriptions/plans/', SubscriptionPlansView.as_view(), name='subscription-plans'),
+    path('subscriptions/status/', UserSubscriptionStatusView.as_view(), name='subscription-status'),
+    path('subscriptions/subscribe/', SubscribeView.as_view(), name='subscribe'),
+    path('subscriptions/initiate-payment/', InitiatePaymentView.as_view(), name='initiate-payment'),
+    path('subscriptions/confirm-payment/', ConfirmPaymentView.as_view(), name='confirm-payment'),
+    path('subscriptions/cancel/', CancelSubscriptionView.as_view(), name='cancel-subscription'),
+    # path('subscriptions/check-access/', CheckFeatureAccessView.as_view(), name='check-feature-access'),  # COMMENTED: Using unlimited plans now
+    # path('subscriptions/quotas/', UsageQuotaView.as_view(), name='usage-quotas'),  # COMMENTED: Not needed for unlimited plans
 ]
