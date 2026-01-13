@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: edtech-backend
+    env: python
+    plan: standard  # Change from free to standard (1GB RAM, 0.5 vCPU)
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install -r requirements.txt
+      python manage.py migrate --noinput
+      python manage.py collectstatic --noinput --no-input
+    startCommand: >-
+      gunicorn edtech_project.wsgi:application 
+      --workers 2 
+      --worker-class sync 
+      --bind 0.0.0.0:$PORT 
+      --timeout 120 
+      --max-requests 1000 
+      --max-requests-jitter 100
+    healthCheckPath: /api/health/
+    healthCheckInterval: 30
+    routes:
+      - type: http
+        path: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: PYTHON_LIBCRYPTO
+        value: manylinux2014
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: ed-tech-backend-tzn8.onrender.com,*.onrender.com

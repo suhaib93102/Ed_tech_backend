@@ -75,7 +75,7 @@ Thumbs.db
 # start_socketio.py
 
 # Deployment
-render.yaml
+# render.yaml  # Uncomment to track render.yaml in repo
 
 # Documentation (keep in repo)
 !DEPLOYMENT_GUIDE.md
