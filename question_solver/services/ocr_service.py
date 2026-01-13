@@ -25,21 +25,41 @@ class OCRService:
         self._initialized = False
 
     def _initialize_services(self):
-        """Lazy initialization of OCR services - use local Tesseract only"""
+        """Lazy initialization of OCR services - prioritize speed"""
         if self._initialized:
             return
 
-        # Use Tesseract OCR only - fast, free, local, no API keys needed
+        # For low-latency mode we disable EasyOCR on CPU environments
+        # and rely on Tesseract for OCR. EasyOCR on CPU is very slow
+        # (was causing 12-16s per image). If you have a GPU, re-enable
+        # by setting `self.easyocr_available = True` and initializing
+        # the reader with `easyocr.Reader(['en'], gpu=True)`.
         self.easyocr_available = False
         self.reader = None
-        self.google_vision_available = False
-        logger.info("OCR Service initialized: Using Tesseract OCR (local, free, fast)")
+        logger.info("EasyOCR disabled (using Tesseract for OCR to reduce latency)")
+        
+        # Initialize Google Cloud Vision as backup (slower but more accurate)
+        try:
+            if settings.GOOGLE_VISION_API_KEY:
+                import google.auth
+                from google.oauth2 import service_account
+                from google.cloud import vision
+                
+                # Parse the service account JSON
+                service_account_info = json.loads(settings.GOOGLE_VISION_API_KEY)
+                credentials = service_account.Credentials.from_service_account_info(service_account_info)
+                
+                self.vision_client = vision.ImageAnnotatorClient(credentials=credentials)
+                self.google_vision_available = True
+                logger.info("Google Cloud Vision API initialized as backup")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Google Cloud Vision API: {e}")
         
     @property
     def ocr_available(self):
         """Check if OCR services are available"""
         self._initialize_services()
-        return True  # Tesseract is always available if system dependency installed
+        return self.google_vision_available or self.easyocr_available
     
     def extract_text_from_image(self, image_path):
         """
@@ -78,7 +98,21 @@ class OCRService:
             # Preprocess image for faster processing
             processed_image_path = self._preprocess_image_for_speed(image_path)
             
-            # Use Tesseract OCR (primary - fast, free, local)
+            # Use EasyOCR only for maximum speed (no Google Vision fallback)
+            if self.easyocr_available:
+                result = self._extract_with_easyocr(processed_image_path)
+                processing_time = time.time() - start_time
+                logger.info(f"OCR completed in {processing_time:.2f}s using EasyOCR")
+                result['processing_time'] = processing_time
+                # Cache the result
+                try:
+                    from .cache_service import ocr_cache
+                    ocr_cache.set(cache_key, result)
+                except:
+                    pass
+                return result
+            
+            # Fallback to Tesseract only if EasyOCR unavailable
             result = self._fallback_tesseract(processed_image_path)
             processing_time = time.time() - start_time
             logger.info(f"OCR completed in {processing_time:.2f}s using Tesseract")
@@ -217,39 +251,25 @@ class OCRService:
             return self._fallback_tesseract(image_path)
     
     def _fallback_tesseract(self, image_path):
-        """Use Tesseract OCR for text extraction - fast, free, local"""
+        """Fallback to Tesseract OCR"""
         try:
-            import pytesseract
             image = Image.open(image_path)
-            
-            # Extract text in English and Hindi
             text = pytesseract.image_to_string(image, lang='eng+hin')
-            
-            if not text or not text.strip():
-                logger.warning(f"Tesseract returned empty text for {image_path}")
-                return {
-                    'success': False,
-                    'error': 'No text detected in image',
-                    'text': '',
-                    'confidence': 0,
-                    'method': 'tesseract'
-                }
             
             return {
                 'success': True,
-                'text': text.strip(),
-                'confidence': 75,  # Tesseract confidence estimate
-                'language': self._detect_language_simple(text),
+                'text': text,
+                'confidence': 70,  # Estimated confidence
+                'language': 'mixed',
                 'method': 'tesseract'
             }
         except Exception as e:
-            logger.error(f"Tesseract OCR failed: {e}")
+            logger.error(f"Tesseract fallback failed: {e}")
             return {
                 'success': False,
                 'error': str(e),
                 'text': '',
-                'confidence': 0,
-                'method': 'tesseract'
+                'confidence': 0
             }
     
     def _detect_language_simple(self, text):

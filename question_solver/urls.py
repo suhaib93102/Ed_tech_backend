@@ -143,11 +143,25 @@ urlpatterns = [
     path('solve/', QuestionSolverView.as_view(), name='solve-question'),
     path('health/', HealthCheckView.as_view(), name='health-check'),
     path('status/', ServiceStatusView.as_view(), name='service-status'),
+    
+    # ✅ SPECIFIC QUIZ PATHS (MUST BE BEFORE GENERIC <str:quiz_id> PATTERNS)
     path('quiz/generate/', QuizGeneratorView.as_view(), name='generate-quiz'),
     path('quiz/create/', QuizGenerateView.as_view(), name='create-quiz'),
+    path('quiz/settings/', get_quiz_settings, name='quiz-settings'),
+    
+    # Daily Quiz endpoints (MUST BE BEFORE generic quiz/<str:quiz_id>/ pattern)
+    path('quiz/daily-quiz/', get_daily_quiz, name='daily-quiz'),
+    path('quiz/daily-quiz/start/', start_daily_quiz, name='start-daily-quiz'),
+    path('quiz/daily-quiz/submit/', submit_daily_quiz, name='submit-daily-quiz'),
+    path('quiz/daily-quiz/coins/', get_user_coins, name='user-coins'),
+    path('quiz/daily-quiz/history/', get_quiz_history, name='quiz-history'),
+    path('quiz/daily-quiz/attempt/detail/', get_daily_quiz_attempt_detail, name='daily-quiz-attempt-detail'),
+    
+    # ✅ GENERIC QUIZ PATTERNS (AFTER SPECIFIC ONES)
     path('quiz/<str:quiz_id>/', QuizDetailView.as_view(), name='quiz-detail'),
     path('quiz/<str:quiz_id>/submit/', QuizSubmitView.as_view(), name='submit-quiz'),
     path('quiz/<str:response_id>/results/', QuizResultsView.as_view(), name='quiz-results'),
+    
     path('predicted-questions/generate/', PredictedQuestionsView.as_view(), name='predicted-questions'),
     path('flashcards/generate/', FlashcardGeneratorView.as_view(), name='generate-flashcards'),
     path('study-material/generate/', StudyMaterialGeneratorView.as_view(), name='generate-study-material'),
@@ -218,15 +232,6 @@ urlpatterns = [
     path('razorpay/withdraw/history/', get_withdrawal_history, name='razorpay-withdrawal-history'),
     path('razorpay/withdraw/status/', get_withdrawal_details, name='razorpay-withdrawal-status'),
     path('razorpay/withdraw/cancel/', cancel_withdrawal, name='razorpay-withdraw-cancel'),
-    
-    # Daily Quiz endpoints
-    path('daily-quiz/', get_daily_quiz, name='daily-quiz'),
-    path('daily-quiz/start/', start_daily_quiz, name='start-daily-quiz'),
-    path('daily-quiz/submit/', submit_daily_quiz, name='submit-daily-quiz'),
-    path('daily-quiz/coins/', get_user_coins, name='user-coins'),
-    path('daily-quiz/history/', get_quiz_history, name='quiz-history'),
-    path('daily-quiz/attempt/detail/', get_daily_quiz_attempt_detail, name='daily-quiz-attempt-detail'),
-    path('quiz/settings/', get_quiz_settings, name='quiz-settings'),
     
     # Pair Quiz endpoints
     path('pair-quiz/create/', CreatePairQuizView.as_view(), name='create-pair-quiz'),
