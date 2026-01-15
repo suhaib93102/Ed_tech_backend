@@ -32,7 +32,10 @@ def get_user_from_token(request):
         # Check if header exists
         if not auth_header:
             logger.warning("No Authorization header found in request")
+            logger.warning(f"Available headers: {list(request.META.keys())}")
             return None
+        
+        logger.info(f"[TOKEN_DEBUG] Auth header found: {auth_header[:50]}...")
         
         # Extract token from Bearer format
         if not auth_header.startswith('Bearer '):
@@ -40,25 +43,31 @@ def get_user_from_token(request):
             return None
         
         token = auth_header.split(' ')[1].strip()
+        logger.info(f"[TOKEN_DEBUG] Token extracted, length: {len(token)}")
         
         if not token:
             logger.warning("Empty token in Authorization header")
             return None
         
         # Get JWT configuration from settings
-        jwt_secret = os.getenv('JWT_SECRET', settings.SECRET_KEY)
-        jwt_algorithm = os.getenv('JWT_ALGORITHM', 'HS256')
+        # IMPORTANT: Must use the same SECRET_KEY used for token encoding in simple_auth_views.py
+        jwt_secret = getattr(settings, 'SECRET_KEY', 'your-secret-key-change-this')
+        jwt_algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
         
-        logger.debug(f"Attempting JWT decode with algorithm: {jwt_algorithm}")
+        logger.info(f"[TOKEN_DEBUG] Using SECRET_KEY length: {len(jwt_secret)}")
+        logger.info(f"[TOKEN_DEBUG] Using algorithm: {jwt_algorithm}")
         
-        # Decode token - try multiple algorithms if needed
+        # Decode token
         try:
             payload = jwt.decode(token, jwt_secret, algorithms=[jwt_algorithm])
-            logger.debug(f"JWT decoded successfully. Payload keys: {list(payload.keys())}")
+            logger.info(f"[TOKEN_DEBUG] JWT decoded successfully. Payload: {payload}")
         except jwt.InvalidAlgorithmError:
             # Try with HS256 if configured algorithm fails
             logger.warning(f"Algorithm {jwt_algorithm} failed, trying HS256")
             payload = jwt.decode(token, jwt_secret, algorithms=['HS256'])
+        except jwt.DecodeError as e:
+            logger.error(f"JWT decode error: {str(e)}. Token length: {len(token)}, Secret length: {len(jwt_secret)}")
+            raise
         
         # Extract user_id from payload (support different key names)
         user_id = payload.get('user_id') or payload.get('id') or payload.get('sub')
@@ -83,6 +92,7 @@ def get_user_from_token(request):
         return None
     except Exception as e:
         logger.error(f"Unexpected error extracting user from token: {str(e)}", exc_info=True)
+        return None
         return None
 
 
@@ -276,11 +286,28 @@ class VerifyPaymentView(APIView):
     def post(self, request):
         """Verify payment and update subscription"""
         try:
-            # Get user from token
+            # Get user from token OR user_id from request body
             user = get_user_from_token(request)
-            if not user:
+            user_id = None
+            
+            if user:
+                user_id = str(user.id)
+                logger.info(f"[VERIFY_PAYMENT] Authenticated user from token: {user_id}")
+            else:
+                # Try to get user_id from request body (for flexibility)
+                user_id = request.data.get('user_id')
+                if user_id:
+                    logger.info(f"[VERIFY_PAYMENT] Using user_id from request body: {user_id}")
+                    try:
+                        user = User.objects.get(id=user_id)
+                    except User.DoesNotExist:
+                        user = None
+                else:
+                    logger.warning("[VERIFY_PAYMENT] No token or user_id provided")
+            
+            if not user and not user_id:
                 return Response(
-                    {'error': 'Unauthorized', 'message': 'Invalid or missing token'},
+                    {'error': 'Unauthorized', 'message': 'Invalid or missing token. Provide either Bearer token or user_id in request body'},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             

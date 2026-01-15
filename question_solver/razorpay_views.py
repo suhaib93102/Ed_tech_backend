@@ -28,8 +28,9 @@ def get_user_from_token(request):
             return None
 
         token = auth_header.split(' ')[1]
-        jwt_secret = os.getenv('JWT_SECRET', settings.SECRET_KEY)
-        jwt_algorithm = os.getenv('JWT_ALGORITHM', 'HS256')
+        # IMPORTANT: Must use the same SECRET_KEY used for token encoding in simple_auth_views.py
+        jwt_secret = getattr(settings, 'SECRET_KEY', 'your-secret-key-change-this')
+        jwt_algorithm = getattr(settings, 'JWT_ALGORITHM', 'HS256')
 
         # Decode token
         import jwt
