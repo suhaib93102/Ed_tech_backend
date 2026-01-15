@@ -160,6 +160,32 @@ class CreatePaymentOrderView(APIView):
             
             logger.info(f"[CREATE_PAYMENT_ORDER] Processing payment: amount={amount}, plan={plan}, user_id={user_id}")
             
+            # Check if user already has an active subscription for the SAME plan (prevent duplicates, but allow upgrades)
+            try:
+                existing_subscription = UserSubscription.objects.get(user_id=user_id)
+                if existing_subscription.subscription_status == 'active' and existing_subscription.plan == plan:
+                    # Same plan - reject as duplicate
+                    logger.warning(f"[CREATE_PAYMENT_ORDER] User {user_id} already has active {plan} subscription - duplicate attempt")
+                    return Response(
+                        {
+                            'error': 'Already Subscribed',
+                            'message': f'User already has an active {plan} subscription',
+                            'current_plan': existing_subscription.plan,
+                            'is_trial': existing_subscription.is_trial,
+                            'trial_end_date': existing_subscription.trial_end_date.isoformat() if existing_subscription.trial_end_date else None,
+                            'next_billing_date': existing_subscription.next_billing_date.isoformat() if existing_subscription.next_billing_date else None,
+                            'next_billing_amount': 99,
+                            'subscription_status': existing_subscription.subscription_status,
+                            'days_until_next_billing': max(0, (existing_subscription.next_billing_date - timezone.now()).days) if existing_subscription.next_billing_date else 0
+                        },
+                        status=status.HTTP_409_CONFLICT
+                    )
+                elif existing_subscription.subscription_status == 'active' and existing_subscription.plan != plan:
+                    # Different plan - allow upgrade
+                    logger.info(f"[CREATE_PAYMENT_ORDER] User {user_id} upgrading from {existing_subscription.plan} to {plan}")
+            except UserSubscription.DoesNotExist:
+                pass  # New user, proceed with order creation
+            
             # Create Razorpay order
             order_response = payment_service.create_order(
                 amount=amount,
