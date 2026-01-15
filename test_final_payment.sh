@@ -1,6 +1,6 @@
 #!/bin/bash
 
-API_URL="http://localhost:8000/api"
+API_URL="https://ed-tech-backend-tzn8.onrender.com/api"
 TEST_USER="test_duplicate_user_123"
 
 echo ""
