@@ -18,20 +18,7 @@ from .views import (
 )
 from .subscription_views import (
     SubscriptionStatusView,
-    UpgradePlanView,
-    AutoPayManagementView,
-    CheckFeatureAccessView,
-    LogFeatureUsageView,
-    BillingHistoryView
-)
-# ✅ NEW: Import new subscription views for Plan A & B
-from .subscription_views import (
-    SubscriptionPlansView,
-    UserSubscriptionStatusView,
-    SubscribeView,
-    InitiatePaymentView,
-    ConfirmPaymentView,
-    CancelSubscriptionView,
+    LogFeatureUsageView
 )
 from .auth_views import (
     GoogleOAuthCallbackView,
@@ -90,23 +77,7 @@ from .pair_quiz_views import (
     CancelPairQuizView
 )
 from .premium_subscription_views import (
-    GetSubscriptionPlansView,
-    create_subscription_order,
-    verify_subscription_payment,
-    cancel_subscription
-)
-from .razorpay_subscription_views import (
-    create_razorpay_subscription,
-    razorpay_subscription_webhook,
-    cancel_razorpay_subscription
-)
-from .subscription_api_views import (
-    create_subscription,
-    verify_payment,
-    razorpay_webhook as subscription_webhook,
-    get_subscription_status,
-    cancel_subscription as cancel_user_subscription,
-    get_available_plans
+    GetSubscriptionPlansView
 )
 from .usage_api_views import (
     usage_dashboard,
@@ -123,12 +94,6 @@ from .usage_api_views import (
     feature_restriction_details
 )
 from .subscription_endpoints import (
-    create_subscription_order as create_sub_order_new,
-    verify_payment as verify_payment_new,
-    subscription_webhook,
-    get_subscription_status as get_sub_status_new,
-    post_payment_validation,
-    get_available_plans as get_plans_new,
     get_razorpay_key as get_razorpay_key_new
 )
 from .admin_users_views import (
@@ -137,6 +102,11 @@ from .admin_users_views import (
     get_user_detail,
     get_usage_analytics,
     search_users
+)
+from .ask_question_views import (
+    ask_question_search,
+    ask_question_with_sources,
+    get_search_status
 )
 
 urlpatterns = [
@@ -168,33 +138,7 @@ urlpatterns = [
     
     # Subscription and Pricing endpoints
     path('subscription/status/', SubscriptionStatusView.as_view(), name='subscription-status'),
-    path('subscription/plans/', GetSubscriptionPlansView.as_view(), name='subscription-plans'),
-    
-    # Razorpay Subscription API (NEW - Recurring Payments with ₹1 trial + Complete Flow)
-    # NEW endpoints using complete_subscription_service (handles entire lifecycle)
-    path('subscriptions/create/', create_sub_order_new, name='create-subscription-complete'),
-    path('subscriptions/verify-payment/', verify_payment_new, name='verify-payment-complete'),
-    path('subscriptions/webhook/', subscription_webhook, name='subscription-webhook-complete'),
-    # path('subscriptions/status/', get_sub_status_new, name='get-subscription-status-complete'),  # COMMENTED: Using new UserSubscriptionStatusView instead
-    path('subscriptions/validate/', post_payment_validation, name='post-payment-validation'),
-    # path('subscriptions/plans/', get_plans_new, name='get-available-plans'),  # COMMENTED: Using new SubscriptionPlansView instead
-    path('subscriptions/razorpay-key/', get_razorpay_key_new, name='razorpay-key-new'),
-    
-    # Legacy Razorpay Subscription API (kept for backward compatibility)
-    path('subscription/create-razorpay/', create_razorpay_subscription, name='create-razorpay-subscription'),
-    path('subscription/webhook/', razorpay_subscription_webhook, name='razorpay-subscription-webhook'),
-    path('subscription/cancel-razorpay/', cancel_razorpay_subscription, name='cancel-razorpay-subscription'),
-    
-    # Legacy payment endpoints (kept for backward compatibility)
-    path('subscription/create-order/', create_subscription_order, name='create-subscription-order'),
-    path('subscription/verify-payment/', verify_subscription_payment, name='verify-subscription-payment'),
-    path('subscription/cancel/', cancel_subscription, name='cancel-subscription'),
-    
-    path('subscription/upgrade/', UpgradePlanView.as_view(), name='upgrade-plan'),
-    path('subscription/autopay/', AutoPayManagementView.as_view(), name='autopay-management'),
-    path('subscription/feature-access/', CheckFeatureAccessView.as_view(), name='check-feature-access'),
     path('subscription/log-usage/', LogFeatureUsageView.as_view(), name='log-usage'),
-    path('subscription/billing-history/', BillingHistoryView.as_view(), name='billing-history'),
     
     # Authentication endpoints (Google OAuth)
     path('auth/google/callback/', GoogleOAuthCallbackView.as_view(), name='google-oauth-callback'),
@@ -265,12 +209,10 @@ urlpatterns = [
     path('admin/analytics/', get_usage_analytics, name='admin-analytics'),
     
     # ✅ NEW: Subscription & Pricing Management endpoints (Plan A & B)
-    path('subscriptions/plans/', SubscriptionPlansView.as_view(), name='subscription-plans'),
-    path('subscriptions/status/', UserSubscriptionStatusView.as_view(), name='subscription-status'),
-    path('subscriptions/subscribe/', SubscribeView.as_view(), name='subscribe'),
-    path('subscriptions/initiate-payment/', InitiatePaymentView.as_view(), name='initiate-payment'),
-    path('subscriptions/confirm-payment/', ConfirmPaymentView.as_view(), name='confirm-payment'),
-    path('subscriptions/cancel/', CancelSubscriptionView.as_view(), name='cancel-subscription'),
-    # path('subscriptions/check-access/', CheckFeatureAccessView.as_view(), name='check-feature-access'),  # COMMENTED: Using unlimited plans now
-    # path('subscriptions/quotas/', UsageQuotaView.as_view(), name='usage-quotas'),  # COMMENTED: Not needed for unlimited plans
+    path('subscription/plans/', GetSubscriptionPlansView.as_view(), name='subscription-plans'),
+    
+    # ✅ NEW: Ask a Question - Search & Web Integration
+    path('ask-question/search/', ask_question_search, name='ask-question-search'),
+    path('ask-question/sources/', ask_question_with_sources, name='ask-question-sources'),
+    path('ask-question/status/', get_search_status, name='search-status'),
 ]

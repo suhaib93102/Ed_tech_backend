@@ -184,8 +184,7 @@ class CreatePaymentOrderView(APIView):
                 logger.info(f"[CREATE_PAYMENT_ORDER] Creating new subscription for user {user_id}")
                 subscription = UserSubscription.objects.create(
                     user_id=user_id,
-                    plan='free',
-                    auto_pay_enabled=auto_pay
+                    plan='free'
                 )
             
             # Create payment record

@@ -1113,3 +1113,181 @@ class SubscriptionPayment(models.Model):
     
     def __str__(self):
         return f"Payment {self.razorpay_payment_id} - ₹{self.amount} ({self.status})"
+
+# ============ UNITY ADS MODELS ============
+
+class AdImpressionLog(models.Model):
+    """
+    Track every ad impression/view for analytics
+    """
+    PLATFORM_CHOICES = [
+        ('ios', 'iOS'),
+        ('android', 'Android'),
+        ('web', 'Web'),
+    ]
+    
+    AD_TYPE_CHOICES = [
+        ('interstitial', 'Interstitial'),
+        ('rewarded', 'Rewarded'),
+        ('banner', 'Banner'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('shown', 'Shown'),
+        ('clicked', 'Clicked'),
+        ('closed', 'Closed'),
+        ('failed', 'Failed'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='ad_impressions')
+    ad_type = models.CharField(max_length=20, choices=AD_TYPE_CHOICES)
+    platform = models.CharField(max_length=10, choices=PLATFORM_CHOICES, default='ios')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='shown')
+    
+    # Ad Details
+    feature = models.CharField(max_length=100, help_text="Feature that triggered the ad")
+    unity_placement_id = models.CharField(max_length=100, blank=True)
+    
+    # Metadata
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'ad_impression_log'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+            models.Index(fields=['ad_type', '-created_at']),
+            models.Index(fields=['feature']),
+            models.Index(fields=['status']),
+        ]
+    
+    def __str__(self):
+        return f"Ad {self.ad_type} - {self.user.username} ({self.status})"
+
+
+class FeatureAdConfig(models.Model):
+    """
+    Configure which features should show ads and how many times
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    feature_name = models.CharField(max_length=100, unique=True)
+    feature_display_name = models.CharField(max_length=200)
+    
+    # Ad Configuration
+    show_ad_after_use = models.BooleanField(default=True, help_text="Show ad after feature use")
+    ad_type = models.CharField(max_length=20, choices=AdImpressionLog.AD_TYPE_CHOICES, default='interstitial')
+    show_frequency = models.IntegerField(default=1, help_text="Show ad every N uses (1 = every use)")
+    
+    # Unity Placement IDs
+    ios_placement_id = models.CharField(max_length=100, blank=True)
+    android_placement_id = models.CharField(max_length=100, blank=True)
+    
+    # Skip conditions
+    skip_for_premium = models.BooleanField(default=True)
+    skip_if_ad_seen_today = models.BooleanField(default=False)
+    max_ads_per_day = models.IntegerField(default=10)
+    
+    # Metadata
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'feature_ad_config'
+        ordering = ['feature_name']
+        indexes = [
+            models.Index(fields=['feature_name']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.feature_display_name} (Frequency: {self.show_frequency}x)"
+
+
+class UserAdLimitTracker(models.Model):
+    """
+    Track how many ads a user has seen today and per feature
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField('auth.User', on_delete=models.CASCADE, related_name='ad_limit_tracker')
+    
+    # Daily tracking
+    ads_shown_today = models.IntegerField(default=0)
+    last_ad_reset = models.DateTimeField(auto_now_add=True)  # Reset daily
+    
+    # Feature tracking (JSON - feature_name: count)
+    feature_use_counts = models.JSONField(default=dict, blank=True)
+    
+    # Latest ad time
+    last_ad_shown = models.DateTimeField(null=True, blank=True)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'user_ad_limit_tracker'
+        indexes = [
+            models.Index(fields=['user']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.ads_shown_today} ads today"
+    
+    def reset_daily_if_needed(self):
+        """Reset daily ad count if it's a new day"""
+        now = timezone.now()
+        if (now - self.last_ad_reset).days >= 1:
+            self.ads_shown_today = 0
+            self.last_ad_reset = now
+            self.save()
+    
+    def increment_feature_use(self, feature_name):
+        """Increment feature use count"""
+        if not self.feature_use_counts:
+            self.feature_use_counts = {}
+        
+        if feature_name not in self.feature_use_counts:
+            self.feature_use_counts[feature_name] = 0
+        
+        self.feature_use_counts[feature_name] += 1
+        self.save()
+
+
+class AdAnalytics(models.Model):
+    """
+    Aggregate analytics for ads
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Date grouping
+    date = models.DateField(auto_now_add=True)
+    hour = models.IntegerField(default=0)  # 0-23
+    
+    # Metrics
+    impressions = models.IntegerField(default=0)
+    clicks = models.IntegerField(default=0)
+    closes = models.IntegerField(default=0)
+    failures = models.IntegerField(default=0)
+    
+    # Feature breakdown
+    feature = models.CharField(max_length=100, blank=True)
+    platform = models.CharField(max_length=10, choices=AdImpressionLog.PLATFORM_CHOICES, blank=True)
+    
+    class Meta:
+        db_table = 'ad_analytics'
+        ordering = ['-date', '-hour']
+        indexes = [
+            models.Index(fields=['date']),
+            models.Index(fields=['feature']),
+            models.Index(fields=['platform']),
+        ]
+        unique_together = [['date', 'hour', 'feature', 'platform']]
+    
+    def __str__(self):
+        return f"Analytics {self.date} - {self.impressions} impressions"

@@ -682,7 +682,71 @@ Return ONLY the extracted text, nothing else."""
                 'error': f'Failed to extract text from image: {str(e)}',
                 'text': ''
             }
+    
+    def generate_text(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
+        """
+        Generate plain text response from Gemini API
+        Used for Ask a Question feature and general text generation
+        
+        Args:
+            prompt: The prompt to send to Gemini
+            max_tokens: Maximum tokens in response (default: 500)
+        
+        Returns:
+            Dictionary with success status, generated text, and metadata
+        """
+        try:
+            if not self.model:
+                return {
+                    'success': False,
+                    'error': 'Gemini model not initialized',
+                    'text': ''
+                }
+            
+            logger.info(f"Generating text with prompt length: {len(prompt)}")
+            
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=0.7,
+                    top_p=0.9,
+                    top_k=40,
+                ),
+                safety_settings=[
+                    {
+                        "category": genai.types.HarmCategory.HARM_CATEGORY_UNSPECIFIED,
+                        "threshold": genai.types.HarmBlockThreshold.BLOCK_NONE,
+                    },
+                ]
+            )
+            
+            if response and hasattr(response, 'text'):
+                text = response.text.strip()
+                logger.info(f"Text generation successful, length: {len(text)}")
+                
+                return {
+                    'success': True,
+                    'text': text,
+                    'tokens_used': len(text.split()),
+                    'model': 'gemini-2.0-flash'
+                }
+            else:
+                logger.warning("Empty response from Gemini")
+                return {
+                    'success': False,
+                    'error': 'Empty response from model',
+                    'text': ''
+                }
+        
+        except Exception as e:
+            logger.error(f"Text generation error: {str(e)}")
+            return {
+                'success': False,
+                'error': f'Failed to generate text: {str(e)}',
+                'text': ''
+            }
 
 
-# Create singleton instance
+# Initialize singleton instance
 gemini_service = GeminiService()
