@@ -7,17 +7,13 @@ from .static_questions_bank import get_random_questions
 from .models import UserCoins, CoinTransaction, QuizSettings
 import logging
 import random
+import uuid
 
 logger = logging.getLogger(__name__)
 
 
 @api_view(['GET'])
 def get_daily_quiz(request):
-    """
-    Get daily quiz with TRULY RANDOM questions from static bank
-    Returns 5 random questions each time - completely new on every call
-    No Gemini API calls - pure static questions
-    """
     user_id = request.query_params.get('user_id', 'anonymous')
     language = request.query_params.get('language', 'english').lower()
     today = date.today()
@@ -47,7 +43,13 @@ def get_daily_quiz(request):
         ]
         request.session.modified = True
         
+        # Generate unique quiz_id for this session
+        quiz_id = str(uuid.uuid4())
+        request.session['quiz_id'] = quiz_id
+        request.session.modified = True
+        
         return Response({
+            'quiz_id': quiz_id,
             'quiz_metadata': {
                 'quiz_type': 'random_questions',
                 'total_questions': len(selected_questions),
