@@ -81,63 +81,9 @@ echo "Response:"
 echo "$RESPONSE" | python -m json.tool 2>/dev/null || echo "$RESPONSE"
 echo ""
 
-# Test 4: Ask Question with AI (Simple)
+# Test 4: Error Test - Empty Question
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}TEST 4️⃣  - Ask Question (AI Answer - Concise)${NC}"
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
-echo "📝 Request:"
-echo "POST $BASE_URL/ask-question/ai/"
-echo "Body:"
-echo '{
-    "question": "What is DNA?",
-    "detailed": false,
-    "max_results": 3
-}'
-echo ""
-
-RESPONSE=$(curl -s -X POST "$BASE_URL/ask-question/ai/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What is DNA?",
-    "detailed": false,
-    "max_results": 3
-  }')
-
-echo "Response:"
-echo "$RESPONSE" | python -m json.tool 2>/dev/null || echo "$RESPONSE"
-echo ""
-
-# Test 5: Ask Question with AI (Detailed)
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${YELLOW}TEST 5️⃣  - Ask Question (AI Answer - Detailed)${NC}"
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-
-echo "📝 Request:"
-echo "POST $BASE_URL/ask-question/ai/"
-echo "Body:"
-echo '{
-    "question": "Explain the carbon cycle",
-    "detailed": true,
-    "max_results": 4
-}'
-echo ""
-
-RESPONSE=$(curl -s -X POST "$BASE_URL/ask-question/ai/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "Explain the carbon cycle",
-    "detailed": true,
-    "max_results": 4
-  }')
-
-echo "Response:"
-echo "$RESPONSE" | python -m json.tool 2>/dev/null || echo "$RESPONSE"
-echo ""
-
-# Test 6: Error Test - Empty Question
-echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${RED}TEST 6️⃣  - Error Test (Empty Question)${NC}"
+echo -e "${RED}TEST 4️⃣  - Error Test (Empty Question)${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
 echo "📝 Request:"
@@ -158,9 +104,9 @@ echo "Response (should show error):"
 echo "$RESPONSE" | python -m json.tool 2>/dev/null || echo "$RESPONSE"
 echo ""
 
-# Test 7: Error Test - Question Too Short
+# Test 5: Error Test - Question Too Short
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${RED}TEST 7️⃣  - Error Test (Question Too Short)${NC}"
+echo -e "${RED}TEST 5️⃣  - Error Test (Question Too Short)${NC}"
 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 
 echo "📝 Request:"
@@ -191,18 +137,10 @@ echo -e "${GREEN}✅ Search Endpoints:${NC}"
 echo "   1. GET  /api/ask-question/status/          - Check API status"
 echo "   2. POST /api/ask-question/search/          - Search web for answers"
 echo ""
-echo -e "${GREEN}✅ AI Endpoints:${NC}"
-echo "   3. POST /api/ask-question/ai/              - AI-powered answers"
-echo ""
 
 echo -e "${BLUE}📋 SUPPORTED PARAMETERS:${NC}\n"
 echo -e "Search Endpoint:"
 echo "   • question (required): The question to ask"
 echo "   • max_results (optional): 1-10, default 5"
 echo "   • language (optional): Language code, default 'en'"
-echo ""
-echo -e "AI Endpoint:"
-echo "   • question (required): The question to ask"
-echo "   • detailed (optional): true/false for detailed answer"
-echo "   • max_results (optional): 1-5, default 3"
 echo ""

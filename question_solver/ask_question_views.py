@@ -118,6 +118,13 @@ def ask_question_search(request):
         results = search_result.get('results', [])
         
         # Step 6: Prepare response data
+        # Filter and prioritize trusted domains; fallback to top results when none marked trusted
+        filtered = search_service.filter_trusted_domains(results)
+        trusted_results = [r for r in filtered.get('results', []) if r.get('is_trusted')]
+        if not trusted_results:
+            # No strongly trusted results; use top filtered results or raw results
+            trusted_results = (filtered.get('results', []) or results)[:max_results]
+        
         search_results_data = []
         sources = set()
         
@@ -127,7 +134,7 @@ def ask_question_search(request):
                 'url': result.get('url', ''),
                 'snippet': result.get('snippet', ''),
                 'domain': result.get('domain', ''),
-                'is_trusted': True
+                'is_trusted': bool(result.get('is_trusted', False))
             })
             sources.add(result.get('domain', 'Unknown'))
         
